@@ -91,14 +91,15 @@
         "rootfs_flash_method": "otg"
     },
     "sparrow-hawk": {
-        "soc": "v2h",
-        "bl2": "bl2_bp_sparrow-hawk.srec",
+        "soc": "v4h",
+        "spl": "spl_bp_sparrow-hawk.bin",
+        "fip": "fip_sparrow-hawk.bin",
+        "pcie_fw": "rcar_gen4_pcie.bin",
         "board_identification": "sparrow-hawk-platform-settings.bin",
-        "fip": "fip_sparrow-hawk.srec",
         "tee": "tee-rz-cmn-v4h.bin",
         "atf_fdts": "r8a779g3-sparrow-hawk.dtb",
         "uboot_dtb": "r8a779g3-sparrow-hawk.dtb",
-        "flash_writer": "Flash_Writer_SCIF_sparrow-hawk.mot",
+        "flash_writer": "Flash_writer_sparrow_hawk_CR52.mot",
         "ipl_flash_method": "xspi",
         "rootfs": "core-image-minimal.wic",
         "rootfs_flash_method": "otg"

@@ -142,6 +142,8 @@ class FirmwareBuilder:
 		default_atf_fdts   = [IMG_DIR / "atf"    / "fdts" / f"{self.boards_data[self.board]['atf_fdts']}"]
 		default_uboot_dtbs = [IMG_DIR / "u-boot" / "dtbs" / f"{self.boards_data[self.board]['uboot_dtb']}"]
 		default_ubnd  = IMG_DIR / "u-boot" / "u-boot-nodtb-rz-cmn.bin"
+		default_sa0   = IMG_DIR / "u-boot" / "sa0-rz-cmn.bin"
+		default_itb   = IMG_DIR / "u-boot" / "u-boot-rz-cmn.itb"
 
 		# Resolve inputs (CLI overrides > defaults)
 		self.bl2   = Path(args.bl2)  if args.bl2  else default_bl2
@@ -149,6 +151,8 @@ class FirmwareBuilder:
 		self.uboot_dtbs = [Path(p) for p in (args.uboot_dtbs or default_uboot_dtbs)]
 		self.bl31  = Path(args.bl31) if args.bl31 else default_bl31
 		self.ubnd  = Path(args.u_boot_nodtb) if args.u_boot_nodtb else default_ubnd
+		self.sa0_bin = Path(args.sa0_bin) if args.sa0_bin else default_sa0
+		self.fit_itb = Path(args.fit_itb) if args.fit_itb else default_itb
 
 		self.out_dir = Path(args.out_dir or "out").resolve()
 		self.out_dir.mkdir(parents=True, exist_ok=True)
@@ -168,8 +172,10 @@ class FirmwareBuilder:
 		self.bl2_dest = board_cfg.get("bl2_dest")
 		self.dtb_base = board_cfg.get("fconf_dtb_base")
 		self.bl2_base = board_cfg.get("bl2_base")
-		# Calculate bl2 padding limit
-		self.bl2_padded_limit = int(self.dtb_base, 16) - int(self.bl2_base, 16)
+		# Calculate bl2 padding limit (V2H bpgen flow only; V4H's SA0 header carries
+		# its own payload size, so bl2_base is absent from its TOML section)
+		self.bl2_padded_limit = (int(self.dtb_base, 16) - int(self.bl2_base, 16)
+								if self.bl2_base else None)
 
 		# BL2_BP VMA get from toml unless overridden
 		bl2_arr = method_cfg.get("BL2")
@@ -207,13 +213,18 @@ class FirmwareBuilder:
 		self.bl2_out = self.bl2_withdtb
 
 		# Soft warnings
-		for p, name in [(self.bl2,"BL2"),(self.bl31,"BL31"),(self.ubnd,"U-BOOT-NODTB")]:
-			if not p.exists():
-				print(f"[warn] {name} not found at: {p}")
-		if not any(p.exists() for p in self.atf_fdts):
-			print(f"[warn] ATF FDTs not found at: {self.atf_fdts}")
-		if not any(p.exists() for p in self.uboot_dtbs):
-			print(f"[warn] U-Boot DTBs not found at: {self.uboot_dtbs}")
+		if self.soc == "v4h":
+			for p, name in [(self.sa0_bin, "SA0+SPL"), (self.fit_itb, "FIT")]:
+				if not p.exists():
+					print(f"[warn] {name} not found at: {p}")
+		else:
+			for p, name in [(self.bl2,"BL2"),(self.bl31,"BL31"),(self.ubnd,"U-BOOT-NODTB")]:
+				if not p.exists():
+					print(f"[warn] {name} not found at: {p}")
+			if not any(p.exists() for p in self.atf_fdts):
+				print(f"[warn] ATF FDTs not found at: {self.atf_fdts}")
+			if not any(p.exists() for p in self.uboot_dtbs):
+				print(f"[warn] U-Boot DTBs not found at: {self.uboot_dtbs}")
 
 	def load_json(self):
 		try:
@@ -323,6 +334,46 @@ class FirmwareBuilder:
 							f"--adjust-vma={self.fip_vma}","--srec-forceS3",
 							str(self.fip_bin), str(self.fip_srec)])
 
+	def step_sa0_and_srec(self):
+		"""V4H: copy the pre-built SA0 header + SPL blob (sa0.bin) as bl2_bp, then SREC."""
+		if not self.sa0_bin.exists():
+			raise FileNotFoundError(f"SA0+SPL blob missing: {self.sa0_bin}")
+		print(f"[build] SA0+SPL -> {self.bl2_bp.name}")
+		shutil.copy2(self.sa0_bin, self.bl2_bp)
+		shutil.copy2(self.bl2_bp, self.bl2_bp_esd)
+
+		print(f"[build] objcopy -> {self.bl2_bp_srec.name} (VMA {self.bl2_bp_vma})")
+		subprocess.check_call([str(self.tools.objcopy),
+							"-I","binary","-O","srec",
+							f"--adjust-vma={self.bl2_bp_vma}","--srec-forceS3",
+							str(self.bl2_bp), str(self.bl2_bp_srec)])
+
+	def step_fit_and_srec(self):
+		"""V4H: copy the pre-built FIT image (u-boot.itb) as fip, then SREC."""
+		if not self.fit_itb.exists():
+			raise FileNotFoundError(f"FIT image missing: {self.fit_itb}")
+		print(f"[build] FIT -> {self.fip_bin.name}")
+		shutil.copy2(self.fit_itb, self.fip_bin)
+
+		print(f"[build] objcopy -> {self.fip_srec.name} (VMA {self.fip_vma})")
+		subprocess.check_call([str(self.tools.objcopy),
+							"-I","binary","-O","srec",
+							f"--adjust-vma={self.fip_vma}","--srec-forceS3",
+							str(self.fip_bin), str(self.fip_srec)])
+
+	def run_all_v4h(self):
+		"""V4H build pipeline: SA0+SPL (bl2_bp) and FIT (fip) split out of flash.bin."""
+		self.step_sa0_and_srec()
+		self.step_fit_and_srec()
+		print("\n=== Artifacts ===")
+		for k, v in {
+			"bl2_bp": self.bl2_bp,
+			"bl2_bp_srec": self.bl2_bp_srec,
+			"fip_bin": self.fip_bin,
+			"fip_srec": self.fip_srec,
+		}.items():
+			print(f"{k:12s} -> {v}")
+
 	def run_all(self):
 		"""Run the full build pipeline sequentially."""
 		self.step_bl2_plus_fdts()
@@ -358,6 +409,8 @@ def parse_args(argv=None) -> argparse.Namespace:
 	p.add_argument("--uboot-dtbs", nargs="+", help="U-Boot DTB(s) to append to u-boot-nodtb")
 	p.add_argument("--bl31")
 	p.add_argument("--u-boot-nodtb")
+	p.add_argument("--sa0-bin", help="V4H: pre-built SA0 header + SPL blob (sa0.bin)")
+	p.add_argument("--fit-itb", help="V4H: pre-built FIT image (u-boot.itb)")
 	p.add_argument("--out-dir", default=f"{IMG_DIR}")
 
 	# tools
@@ -376,7 +429,11 @@ def parse_args(argv=None) -> argparse.Namespace:
 def main(argv=None):
 	"""Entrypoint: parse args, build firmware pipeline."""
 	args = parse_args(argv)
-	FirmwareBuilder(args).run_all()
+	builder = FirmwareBuilder(args)
+	if builder.soc == "v4h":
+		builder.run_all_v4h()
+	else:
+		builder.run_all()
 
 if __name__ == "__main__":
 	main()

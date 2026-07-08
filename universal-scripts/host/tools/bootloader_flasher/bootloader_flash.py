@@ -116,6 +116,12 @@ class BootloaderFlashUtil:
 									action='store',
 									type=str,
 									help='Path to board identification image (defaults to: <path/to/your/package>/target/images/rzg2l-sbc-platform-settings.bin).')
+		self.__parser.add_argument('--image_pcie_fw',
+									default=None,
+									dest='pcieFwImage',
+									action='store',
+									type=str,
+									help='Path to PCIe PHY firmware (rcar_gen4_pcie.bin) for V4H boards.')
 		self.__parser.add_argument('--esd_device',
 									dest='esdDevice',
 									action='store',
@@ -192,6 +198,18 @@ class BootloaderFlashUtil:
 		except:
 			die(msg='Unable to open serial port 921600 bps.')
 
+	def __prompt_timeout_for_file(self, file_path, min_timeout=30):
+		"""Scale the wait timeout to file size so large SREC/binary uploads
+		(e.g. sparrow-hawk's ~5MB FIP) aren't cut off before the Flash Writer
+		finishes erasing/programming and prints the next prompt."""
+		try:
+			size = os.path.getsize(file_path)
+		except OSError:
+			return min_timeout
+		bytes_per_sec = self.__args.baudRate / 10  # 8N1 framing
+		estimated = size / bytes_per_sec
+		return max(min_timeout, int(estimated * 2) + 15)
+
 	def __wait_for_prompt(self, timeout=30):
 		end_time = time.time() + timeout
 		buffer = b""
@@ -227,6 +245,9 @@ class BootloaderFlashUtil:
 		if not os.path.exists(self.__args.fipImage):
 			print(f"The file {self.__args.fipImage} does not exist.")
 			exit()
+		if self.__args.pcieFwImage and not os.path.exists(self.__args.pcieFwImage):
+			print(f"The file {self.__args.pcieFwImage} does not exist.")
+			exit()
 		if not os.path.exists(self.__args.bidImage):
 			print(f"The file {self.__args.bidImage} does not exist.")
 			exit()
@@ -241,7 +262,9 @@ class BootloaderFlashUtil:
 		# TODO: Each board has the different responses.
 		# We need to list out all the supported responses corresponding to the supported boards.
 		# Try to read from serial with reconnection support
-		if (self.__args.boardName == "rzv2h-evk" or self.__args.boardName == "imdt-v2h-sbc"):
+		if (self.__args.boardName == "sparrow-hawk"):
+			ok = self.__serialReadWithReconnect('Load Program to RT-SRAM', allow_uboot_prompt=True)
+		elif (self.__args.boardName == "rzv2h-evk" or self.__args.boardName == "imdt-v2h-sbc"):
 			ok = self.__serialReadWithReconnect('Load Program to SRAM', allow_uboot_prompt=True)
 		elif (self.__args.boardName == "rzv2h-rdk"):
 			ok = self.__serialReadNoResponseWithReconnect()
@@ -268,7 +291,7 @@ class BootloaderFlashUtil:
 		# emmc flash
 		if (self.__args.flashMethod == "emmc"):
 			self.__handle_emmc_flash(self.__flashAddress["emmc"])
-		# xspi flasj
+		# xspi flash
 		elif (self.__args.flashMethod == "xspi"):
 			self.__handle_xspi_flash(self.__flashAddress["xspi"])
 
@@ -364,7 +387,10 @@ class BootloaderFlashUtil:
 		print("Board identification write completed.\n")
 
 	def __handle_xspi_flash(self, flashAddress):
-		if not (self.__args.boardName == "rzv2h-evk") and not (self.__args.boardName == "rzv2h-rdk"):
+		is_v4h = (self.__args.boardName == "sparrow-hawk")
+
+		# XCS erase: skip for rzv2h-evk, rzv2h-rdk, and sparrow-hawk
+		if not (self.__args.boardName == "rzv2h-evk") and not (self.__args.boardName == "rzv2h-rdk") and not (self.__args.boardName == "sparrow-hawk"):
 			print("\n" + "="*SEPARATOR_WIDTH)
 			print("** ERASING QSPI FLASH MEMORY **")
 			print("="*SEPARATOR_WIDTH)
@@ -381,43 +407,62 @@ class BootloaderFlashUtil:
 			print("="*SEPARATOR_WIDTH + "\n")
 
 		# Changing speed to 921600 bps.
-		self.__writeSerialCmd('SUP')
-		self.__serialRead('the terminal.')
+		# NOTE: sparrow-hawk Flash Writer runs at 921600 from power-on,
+		# the SUP command is not supported (returns "command not found"),
+		# so skip it entirely.
+		if not is_v4h:
+			self.__writeSerialCmd('SUP')
+			self.__serialRead('the terminal.')
+			self.__setupSerialPort_SUP()
+			time.sleep(1)
+			self.__writeSerialCmd('')
+			self.__serialRead('>')
 
-		self.__setupSerialPort_SUP()
-		time.sleep(1)
-		self.__writeSerialCmd('')
-		self.__serialRead('>')
+		if is_v4h:
+			# V4H: Flash Writer Rev.77.9.4 XLS2 has unreliable SREC→SPI
+			# address mapping; use XLS3 (binary mode, 128KB chunks)
+			# which matches the reference ipl_burning.py behaviour.
+			# The FW already runs at 921600, no SUP needed.
+			self.__write_binary_chunked_xls3(
+				"BL2 (SA0+SPL)", self.__args.bl2Image, int(flashAddress["BL2"][1], 16))
+			self.__write_binary_chunked_xls3(
+				"FIP (FIT)", self.__args.fipImage, int(flashAddress["FIP"][1], 16))
+		else:
+			# Write BL2
+			BL2FlashAddress = flashAddress["BL2"]
+			self.__writeSerialCmd('XLS2')
+			self.__serialRead('Please Input : H')
+			self.__writeSerialCmd(BL2FlashAddress[0])
 
-		# Write BL2
-		BL2FlashAddress = flashAddress["BL2"]
-		self.__writeSerialCmd('XLS2')
-		self.__serialRead('Please Input : H')
-		self.__writeSerialCmd(BL2FlashAddress[0])
+			self.__serialRead('Please Input : H')
+			self.__writeSerialCmd(BL2FlashAddress[1])
+			self.__serialRead('please send !')
 
-		self.__serialRead('Please Input : H')
-		self.__writeSerialCmd(BL2FlashAddress[1])
-		self.__serialRead('please send !')
+			print("Writing BL2...")
+			self.__writeFileToSerial(self.__args.bl2Image)
+			self.__wait_for_prompt(self.__prompt_timeout_for_file(self.__args.bl2Image))
+			print("BL2 write complete.\n")
 
-		print("Writing BL2...")
-		self.__writeFileToSerial(self.__args.bl2Image)
-		self.__serialRead('>')
-		print("BL2 write completed.\n")
+			# Write FIP
+			FIPFlashAddress = flashAddress["FIP"]
+			self.__writeSerialCmd('XLS2')
+			self.__serialRead('Please Input : H')
+			self.__writeSerialCmd(FIPFlashAddress[0])
 
-		# Write FIP
-		FIPFlashAddress = flashAddress["FIP"]
-		self.__writeSerialCmd('XLS2')
-		self.__serialRead('Please Input : H')
-		self.__writeSerialCmd(FIPFlashAddress[0])
+			self.__serialRead('Please Input : H')
+			self.__writeSerialCmd(FIPFlashAddress[1])
+			self.__serialRead('please send !')
 
-		self.__serialRead('Please Input : H')
-		self.__writeSerialCmd(FIPFlashAddress[1])
-		self.__serialRead('please send !')
+			print("Writing FIP...")
+			self.__writeFileToSerial(self.__args.fipImage)
+			self.__wait_for_prompt(self.__prompt_timeout_for_file(self.__args.fipImage))
+			print("FIP write completed.\n")
 
-		print("Writing FIP...")
-		self.__writeFileToSerial(self.__args.fipImage)
-		self.__wait_for_prompt()
-		print("FIP write completed.\n")
+		# Write PCIe PHY firmware (rcar_gen4_pcie.bin), if provided
+		if self.__args.pcieFwImage:
+			PcieFlashAddress = flashAddress["PCIE"]
+			self.__write_binary_chunked_xls3(
+				"PCIe firmware (rcar_gen4_pcie.bin)", self.__args.pcieFwImage, int(PcieFlashAddress[0], 16))
 
 		# Write board identification
 		BIDFlashAddress = flashAddress["BID"]
@@ -436,6 +481,43 @@ class BootloaderFlashUtil:
 		self.__writeFileToSerial(self.__args.bidImage)
 		self.__wait_for_prompt()
 		print("Board identification write completed.\n")
+
+	def __write_binary_chunked_xls3(self, label, file_path, flash_offset):
+		"""Write a raw binary file to xSPI via xls3, chunked in 128KB blocks."""
+		chunk_size = 128 * 1024
+		total_size = os.path.getsize(file_path)
+		import math
+		total_chunks = math.ceil(total_size / chunk_size)
+
+		print(f"Writing {label} — {total_size} bytes in {total_chunks} chunks...")
+
+		with open(file_path, "rb") as f:
+			offset = flash_offset
+			while True:
+				chunk = f.read(chunk_size)
+				if not chunk:
+					break
+
+				self.__writeSerialCmd('')
+				self.__wait_for_prompt(30)
+				self.__writeSerialCmd('XLS3')
+
+				self.__serialRead('Please Input : H')
+				size_hex = f"{len(chunk):X}"
+				self.__writeSerialCmd(size_hex)
+
+				self.__serialRead('Please Input : H')
+				offset_hex = f"{offset:X}"
+				self.__writeSerialCmd(offset_hex)
+
+				self.__serialRead('please send !')
+
+				self.__serialPort.write(chunk)
+				self.__wait_for_prompt(30)
+
+				offset += len(chunk)
+
+		print(f"{label} write completed.\n")
 
 	def __serialReadWithReconnect(self, cond='\n', max_retries=MAX_RECONNECT_RETRIES, allow_uboot_prompt=False) -> bool:
 		"""Read from serial with automatic reconnection on failure.
@@ -618,9 +700,20 @@ class BootloaderFlashUtil:
 
 	# Function to write file over serial
 	def __writeFileToSerial(self, file):
+		# Large files (e.g. sparrow-hawk's ~5MB FIP SREC) sent in one write()
+		# call can outrun the Flash Writer's ability to drain its UART FIFO
+		# into QSPI, since this link has no flow control (no RTS/CTS,
+		# no XON/XOFF). Sending in small chunks with a short pause lets the
+		# receiver keep up instead of silently dropping/corrupting bytes.
+		chunk_size = 4096
 		with open(file, 'rb') as f:
-			self.__serialPort.write(f.read())
-			f.close()
+			while True:
+				chunk = f.read(chunk_size)
+				if not chunk:
+					break
+				self.__serialPort.write(chunk)
+				self.__serialPort.flush()
+				time.sleep(0.005)
 
 	# Function to wait and print contents of serial buffer
 	def __serialRead(self, cond='\n', timeout=10, retry_interval=1):

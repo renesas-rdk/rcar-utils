@@ -32,20 +32,24 @@ except ImportError:
 
 # Constants
 MESSAGE_WIDTH = 85
-# Fixed baud rate for serial communication
+# Fixed baud rate for serial communication (U-Boot console requires 115200)
 DEFAULT_BAUD_RATE = 115200
+# Sparrow-hawk (V4H) Flash Writer/CR52 loader talks at 921600 from power-on,
+# with no 115200 auto-baud stage like the V2H/G2L boards.
+SPARROW_HAWK_BAUD_RATE = 921600
 
 script_name = os.path.basename(sys.argv[0])
 
 @dataclass
 class FlashInfo:
-    bl2: str
     board_identification: str
-    fip: str
     flash_writer: str
     ipl_flash_method: str
     rootfs: str
     rootfs_flash_method: str
+    bl2: str = ""
+    fip: str = ""
+    pcie_fw: str = ""
 
 class UniversalFlashUtil:
     def __init__(self):
@@ -173,8 +177,12 @@ class UniversalFlashUtil:
             print("\nOperation cancelled by user.")
             return False
 
-        # Use fixed baud rate - U-Boot console requires 115200
-        self.selected_baud_rate = DEFAULT_BAUD_RATE
+        # Use fixed baud rate - U-Boot console requires 115200, except
+        # sparrow-hawk whose Flash Writer/CR52 loader talks at 921600 from power-on.
+        if self.selected_board_name == "sparrow-hawk":
+            self.selected_baud_rate = SPARROW_HAWK_BAUD_RATE
+        else:
+            self.selected_baud_rate = DEFAULT_BAUD_RATE
         
         print(f"Selected port [{self.selected_port}] with baud rate: {self.selected_baud_rate}")
         if self.selected_port_by_id and self.selected_port_by_id != self.selected_port:
@@ -204,6 +212,14 @@ class UniversalFlashUtil:
 
         # Map paths from images dir + flash_images.json
         board_soc = self.boards_data[self.selected_board_name]["soc"]
+
+        if board_soc == "v4h":
+            # V4H: SA0 header+SPL and FIT are pre-built by the U-Boot binman flow,
+            # already stored as .bin in target/images/.  No assembly needed here.
+            # flash_images.json points to .bin (not .srec) for XLS3 binary mode.
+            print("[build] V4H artifacts already prepared (sa0.bin + u-boot.itb)")
+            return
+
         bl2_path = os.path.join(self.__imagesDir, "atf", f"bl2-{self.selected_info.ipl_flash_method}-rz-cmn.bin")
         bl31_path = os.path.join(self.__imagesDir, "atf", "bl31-rz-cmn.bin")
         atf_fdts_path = os.path.join(self.__imagesDir, "atf", "fdts", self.boards_data[self.selected_board_name]['atf_fdts'])
@@ -230,13 +246,14 @@ class UniversalFlashUtil:
         board_data = self.boards_data[self.selected_board_name]
 
         self.selected_info = FlashInfo(
-            bl2=board_data["bl2"],
             board_identification=board_data["board_identification"],
-            fip=board_data["fip"],
             flash_writer=board_data["flash_writer"],
             ipl_flash_method=board_data["ipl_flash_method"],
             rootfs=board_data["rootfs"],
             rootfs_flash_method=board_data["rootfs_flash_method"],
+            bl2=board_data.get("spl", board_data.get("bl2", "")),
+            fip=board_data.get("fip", ""),
+            pcie_fw=board_data.get("pcie_fw", ""),
         )
 
     def print_selected_info(self):
@@ -520,10 +537,15 @@ class UniversalFlashUtil:
             '--serial_port', f"{self.selected_port}",
             '--serial_port_baud', f"{self.selected_baud_rate}",
             '--image_writer', f"{self.__imagesDir}/{self.selected_info.flash_writer}",
-            '--image_bl2', f"{self.__imagesDir}/{self.selected_info.bl2}",
-            '--image_fip', f"{self.__imagesDir}/{self.selected_info.fip}",
             '--image_bid', f"{self.__imagesDir}/{self.selected_info.board_identification}"
         ]
+
+        if self.selected_info.bl2:
+            bootloader_args += ['--image_bl2', f"{self.__imagesDir}/{self.selected_info.bl2}"]
+        if self.selected_info.fip:
+            bootloader_args += ['--image_fip', f"{self.__imagesDir}/{self.selected_info.fip}"]
+        if self.selected_info.pcie_fw:
+            bootloader_args += ['--image_pcie_fw', f"{self.__imagesDir}/{self.selected_info.pcie_fw}"]
 
         if self.selected_port_by_id:
             bootloader_args.extend(['--serial_port_by_id', self.selected_port_by_id])
