@@ -47,6 +47,7 @@ class FlashInfo:
     ipl_flash_method: str
     rootfs: str
     rootfs_flash_method: str
+    spl: str = ""
     bl2: str = ""
     fip: str = ""
     pcie_fw: str = ""
@@ -217,7 +218,7 @@ class UniversalFlashUtil:
             # V4H: SA0 header+SPL and FIT are pre-built by the U-Boot binman flow,
             # already stored as .bin in target/images/.  No assembly needed here.
             # flash_images.json points to .bin (not .srec) for XLS3 binary mode.
-            print("[build] V4H artifacts already prepared (sa0.bin + u-boot.itb)")
+            print("[build] V4H artifacts already prepared (SA0+SPL + u-boot.itb)")
             return
 
         bl2_path = os.path.join(self.__imagesDir, "atf", f"bl2-{self.selected_info.ipl_flash_method}-rz-cmn.bin")
@@ -251,7 +252,8 @@ class UniversalFlashUtil:
             ipl_flash_method=board_data["ipl_flash_method"],
             rootfs=board_data["rootfs"],
             rootfs_flash_method=board_data["rootfs_flash_method"],
-            bl2=board_data.get("spl", board_data.get("bl2", "")),
+            spl=board_data.get("spl", ""),
+            bl2=board_data.get("bl2", ""),
             fip=board_data.get("fip", ""),
             pcie_fw=board_data.get("pcie_fw", ""),
         )
@@ -263,7 +265,10 @@ class UniversalFlashUtil:
 
         print(f"\nSelected Board: {self.selected_board_name}")
         print("Board Information:")
-        print(f"  BL2: {self.selected_info.bl2}")
+        if self.selected_info.spl:
+            print(f"  SPL: {self.selected_info.spl}")
+        else:
+            print(f"  BL2: {self.selected_info.bl2}")
         print(f"  Board Identification: {self.selected_info.board_identification}")
         print(f"  Flash Writer: {self.selected_info.flash_writer}")
         print(f"  IPL Flash Method: {self.selected_info.ipl_flash_method}")
@@ -518,12 +523,20 @@ class UniversalFlashUtil:
         bootloader_args = [
             '--board_name', self.selected_board_name,
             '--flash_method', 'esd',
-            '--image_bl2', f"{self.__imagesDir}/bl2_{self.selected_board_name}.bin",
-            '--image_bl2_esd', f"{self.__imagesDir}/bl2_bp_esd_{self.selected_board_name}.bin",
             '--image_fip', f"{self.__imagesDir}/fip_{self.selected_board_name}.bin",
             '--image_bid', f"{self.__imagesDir}/{self.selected_info.board_identification}",
             '--esd_device', raw_device
         ]
+        if self.selected_info.spl:
+            bootloader_args += [
+                '--image_spl', f"{self.__imagesDir}/{self.selected_info.spl}",
+                '--image_spl_esd', f"{self.__imagesDir}/spl_bp_esd_{self.selected_board_name}.bin",
+            ]
+        else:
+            bootloader_args += [
+                '--image_bl2', f"{self.__imagesDir}/bl2_{self.selected_board_name}.bin",
+                '--image_bl2_esd', f"{self.__imagesDir}/bl2_bp_esd_{self.selected_board_name}.bin",
+            ]
 
         bootloaderFlashUtil = BootloaderFlashUtil(args=bootloader_args)
         bootloaderFlashUtil.writeBootloaderESD()
@@ -540,6 +553,8 @@ class UniversalFlashUtil:
             '--image_bid', f"{self.__imagesDir}/{self.selected_info.board_identification}"
         ]
 
+        if self.selected_info.spl:
+            bootloader_args += ['--image_spl', f"{self.__imagesDir}/{self.selected_info.spl}"]
         if self.selected_info.bl2:
             bootloader_args += ['--image_bl2', f"{self.__imagesDir}/{self.selected_info.bl2}"]
         if self.selected_info.fip:

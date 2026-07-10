@@ -46,6 +46,32 @@ class BootloaderFlashUtil:
 		self.__setupArgumentParser(args)
 		self.__getFlashAddress()
 
+	def __is_v4h(self):
+		return self.__args.boardName == "sparrow-hawk"
+
+	def __ipl_label(self):
+		return "SPL" if self.__is_v4h() else "BL2"
+
+	def __ipl_config_key(self, flash_config):
+		key = "SPL" if self.__is_v4h() else "BL2"
+		if key not in flash_config:
+			die(msg=f'{key} flash address is not configured for board {self.__args.boardName}.')
+		return key
+
+	def __ipl_image(self):
+		if self.__is_v4h():
+			if not self.__args.splImage:
+				die(msg='--image_spl must be provided for V4H boards.')
+			return self.__args.splImage
+		return self.__args.bl2Image
+
+	def __ipl_esd_image(self):
+		if self.__is_v4h():
+			if not self.__args.splEsdImage:
+				die(msg='--image_spl_esd must be provided for V4H eSD flashing.')
+			return self.__args.splEsdImage
+		return self.__args.bl2EsdImage
+
 	# Setup CLI parser
 	def __setupArgumentParser(self, args=[]):
 		# Create parser
@@ -98,12 +124,24 @@ class BootloaderFlashUtil:
 									action='store',
 									type=str,
 									help='Path to bl2 image (defaults to: <path/to/your/package>/target/images/bl2_bp_rzg2l-sbc.srec).')
+		self.__parser.add_argument('--image_spl',
+									default=None,
+									dest='splImage',
+									action='store',
+									type=str,
+									help='Path to SPL image for V4H boards (SA0 header + SPL binary).')
 		self.__parser.add_argument('--image_bl2_esd',
 									default=f'{self.__imagesDir}/bl2_bp_esd_rzg2l-sbc.bin',
 									dest='bl2EsdImage',
 									action='store',
 									type=str,
 									help='[Only used in eSD Flash] (defaults to: <path/to/your/package>/target/images/bl2_bp_esd_rzg2l-sbc.bin).')
+		self.__parser.add_argument('--image_spl_esd',
+									default=None,
+									dest='splEsdImage',
+									action='store',
+									type=str,
+									help='[Only used in V4H eSD Flash] Path to SPL eSD image.')
 		self.__parser.add_argument('--image_fip',
 									default=f'{self.__imagesDir}/fip_rzg2l-sbc.srec',
 									dest='fipImage',
@@ -239,8 +277,9 @@ class BootloaderFlashUtil:
 		if not os.path.exists(self.__args.flashWriterImage):
 			print(f"The file {self.__args.flashWriterImage} does not exist.")
 			exit()
-		if not os.path.exists(self.__args.bl2Image):
-			print(f"The file {self.__args.bl2Image} does not exist.")
+		ipl_image = self.__ipl_image()
+		if not os.path.exists(ipl_image):
+			print(f"The file {ipl_image} does not exist.")
 			exit()
 		if not os.path.exists(self.__args.fipImage):
 			print(f"The file {self.__args.fipImage} does not exist.")
@@ -317,23 +356,25 @@ class BootloaderFlashUtil:
 		self.__writeSerialCmd('')
 		self.__serialRead('>')
 
-		# Write BL2
-		BL2FlashAddress = flashAddress["BL2"]
+		# Write BL2/SPL
+		ipl_label = self.__ipl_label()
+		ipl_image = self.__ipl_image()
+		ipl_flash_address = flashAddress[self.__ipl_config_key(flashAddress)]
 		self.__writeSerialCmd('EM_W')
 		self.__serialRead('Select area')
-		self.__writeSerialCmd(BL2FlashAddress[0])
+		self.__writeSerialCmd(ipl_flash_address[0])
 
 		self.__serialRead('Please Input Start Address in sector')
-		self.__writeSerialCmd(BL2FlashAddress[1])
+		self.__writeSerialCmd(ipl_flash_address[1])
 
 		self.__serialRead('Please Input Program Start Address')
-		self.__writeSerialCmd(BL2FlashAddress[2])
+		self.__writeSerialCmd(ipl_flash_address[2])
 		self.__serialRead('please send !')
 
-		print("Writing BL2...")
-		self.__writeFileToSerial(self.__args.bl2Image)
+		print(f"Writing {ipl_label}...")
+		self.__writeFileToSerial(ipl_image)
 		self.__serialRead('>')
-		print("BL2 write complete.\n")
+		print(f"{ipl_label} write complete.\n")
 
 		# Write FIP
 		FIPFlashAddress = flashAddress["FIP"]
@@ -424,7 +465,7 @@ class BootloaderFlashUtil:
 			# which matches the reference ipl_burning.py behaviour.
 			# The FW already runs at 921600, no SUP needed.
 			self.__write_binary_chunked_xls3(
-				"BL2 (SA0+SPL)", self.__args.bl2Image, int(flashAddress["BL2"][1], 16))
+				"SPL (SA0+SPL)", self.__ipl_image(), int(flashAddress[self.__ipl_config_key(flashAddress)][1], 16))
 			self.__write_binary_chunked_xls3(
 				"FIP (FIT)", self.__args.fipImage, int(flashAddress["FIP"][1], 16))
 		else:
@@ -769,8 +810,10 @@ class BootloaderFlashUtil:
 		self.__validate_dd_tool()
 
 		# Check file exists and is .bin
-		self.__resolve_bin_image(self.__args.bl2EsdImage)
-		self.__resolve_bin_image(self.__args.bl2Image)
+		ipl_esd_image = self.__ipl_esd_image()
+		ipl_image = self.__ipl_image()
+		self.__resolve_bin_image(ipl_esd_image)
+		self.__resolve_bin_image(ipl_image)
 		self.__resolve_bin_image(self.__args.fipImage)
 		self.__resolve_bin_image(self.__args.bidImage)
 
@@ -780,8 +823,10 @@ class BootloaderFlashUtil:
 
 		# Run dd to flash images
 		print(f"Flashing eSD on device {target_device}...")
-		self.__run_dd(self.__args.bl2EsdImage, target_device, esd_config["BL2_BP_ESD"][0], esd_config["BL2_BP_ESD"][1])
-		self.__run_dd(self.__args.bl2Image, target_device, esd_config["BL2"][0])
+		esd_bp_key = "SPL_BP_ESD" if self.__is_v4h() else "BL2_BP_ESD"
+		esd_ipl_key = self.__ipl_config_key(esd_config)
+		self.__run_dd(ipl_esd_image, target_device, esd_config[esd_bp_key][0], esd_config[esd_bp_key][1])
+		self.__run_dd(ipl_image, target_device, esd_config[esd_ipl_key][0])
 		self.__run_dd(self.__args.bidImage, target_device, esd_config["BID"][0])
 		self.__run_dd(self.__args.fipImage, target_device, esd_config["FIP"][0])
 

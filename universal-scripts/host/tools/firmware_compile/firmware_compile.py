@@ -133,8 +133,7 @@ class FirmwareBuilder:
 
 		# Defaults derived from target/images + board
 		self.soc = (args.soc or self.boards_data[self.board]["soc"] or "g2l").lower()
-		# V4H uses the same boot-parameter format as V2H (R-Car Gen4 AA55FFFF record)
-		self.bpgen_soc = "v2h" if self.soc == "v4h" else self.soc
+		self.bpgen_soc = self.soc
 		self.method = (args.method or self.boards_data[self.board]["ipl_flash_method"] or "xspi").lower()
 
 		default_bl2   = IMG_DIR / "atf"    / f"bl2-{self.method}-rz-cmn.bin"
@@ -169,22 +168,34 @@ class FirmwareBuilder:
 		method_cfg = board_cfg.get(self.method, {}) if board_cfg else {}
 
 		# Load board specific information from TOML file
+		self.spl_dest = board_cfg.get("spl_dest")
 		self.bl2_dest = board_cfg.get("bl2_dest")
 		self.dtb_base = board_cfg.get("fconf_dtb_base")
 		self.bl2_base = board_cfg.get("bl2_base")
-		# Calculate bl2 padding limit (V2H bpgen flow only; V4H's SA0 header carries
-		# its own payload size, so bl2_base is absent from its TOML section)
+		# Calculate bl2 padding limit. V4H's SA0 header carries its own
+		# payload size, so bl2_base is absent from its TOML section.
 		self.bl2_padded_limit = (int(self.dtb_base, 16) - int(self.bl2_base, 16)
 								if self.bl2_base else None)
 
-		# BL2_BP VMA get from toml unless overridden
+		# SPL/BL2 VMA get from toml unless overridden
+		spl_arr = method_cfg.get("SPL")
 		bl2_arr = method_cfg.get("BL2")
-		if args.bl2_bp_vma:
-			self.bl2_bp_vma = hex_norm(args.bl2_bp_vma)
-		elif (self.method == "xspi"):
-			self.bl2_bp_vma = hex_norm(bl2_arr[0])
-		elif (self.method == "emmc"):
-			self.bl2_bp_vma = hex_norm(bl2_arr[2])
+		if self.soc == "v4h":
+			ipl_arr = spl_arr
+			if args.spl_bp_vma:
+				self.spl_bp_vma = hex_norm(args.spl_bp_vma)
+			elif (self.method == "xspi"):
+				self.spl_bp_vma = hex_norm(ipl_arr[0])
+			elif (self.method == "emmc"):
+				self.spl_bp_vma = hex_norm(ipl_arr[2])
+		else:
+			ipl_arr = bl2_arr
+			if args.bl2_bp_vma:
+				self.bl2_bp_vma = hex_norm(args.bl2_bp_vma)
+			elif (self.method == "xspi"):
+				self.bl2_bp_vma = hex_norm(ipl_arr[0])
+			elif (self.method == "emmc"):
+				self.bl2_bp_vma = hex_norm(ipl_arr[2])
 
 		# FIP VMA get from toml unless overridden
 		fip_arr = method_cfg.get("FIP", [])
@@ -202,6 +213,9 @@ class FirmwareBuilder:
 			raise ValueError("fip_tb_kind must be 'soc' or 'tb'")
 
 		# Outputs
+		self.spl_bp        = self.out_dir / f"spl_bp_{self.board}.bin"
+		self.spl_bp_esd    = self.out_dir / f"spl_bp_esd_{self.board}.bin"
+		self.spl_bp_srec   = self.out_dir / f"spl_bp_{self.board}.srec"
 		self.bl2_bp        = self.out_dir / f"bl2_bp_{self.board}.bin"
 		self.bl2_bp_esd    = self.out_dir / f"bl2_bp_esd_{self.board}.bin"
 		self.bl2_bp_srec   = self.out_dir / f"bl2_bp_{self.board}.srec"
@@ -335,18 +349,18 @@ class FirmwareBuilder:
 							str(self.fip_bin), str(self.fip_srec)])
 
 	def step_sa0_and_srec(self):
-		"""V4H: copy the pre-built SA0 header + SPL blob (sa0.bin) as bl2_bp, then SREC."""
+		"""V4H: copy the pre-built SA0 header + SPL blob (sa0.bin) as spl_bp, then SREC."""
 		if not self.sa0_bin.exists():
 			raise FileNotFoundError(f"SA0+SPL blob missing: {self.sa0_bin}")
-		print(f"[build] SA0+SPL -> {self.bl2_bp.name}")
-		shutil.copy2(self.sa0_bin, self.bl2_bp)
-		shutil.copy2(self.bl2_bp, self.bl2_bp_esd)
+		print(f"[build] SA0+SPL -> {self.spl_bp.name}")
+		shutil.copy2(self.sa0_bin, self.spl_bp)
+		shutil.copy2(self.spl_bp, self.spl_bp_esd)
 
-		print(f"[build] objcopy -> {self.bl2_bp_srec.name} (VMA {self.bl2_bp_vma})")
+		print(f"[build] objcopy -> {self.spl_bp_srec.name} (VMA {self.spl_bp_vma})")
 		subprocess.check_call([str(self.tools.objcopy),
 							"-I","binary","-O","srec",
-							f"--adjust-vma={self.bl2_bp_vma}","--srec-forceS3",
-							str(self.bl2_bp), str(self.bl2_bp_srec)])
+							f"--adjust-vma={self.spl_bp_vma}","--srec-forceS3",
+							str(self.spl_bp), str(self.spl_bp_srec)])
 
 	def step_fit_and_srec(self):
 		"""V4H: copy the pre-built FIT image (u-boot.itb) as fip, then SREC."""
@@ -362,13 +376,13 @@ class FirmwareBuilder:
 							str(self.fip_bin), str(self.fip_srec)])
 
 	def run_all_v4h(self):
-		"""V4H build pipeline: SA0+SPL (bl2_bp) and FIT (fip) split out of flash.bin."""
+		"""V4H build pipeline: SA0+SPL (spl_bp) and FIT (fip) split out of flash.bin."""
 		self.step_sa0_and_srec()
 		self.step_fit_and_srec()
 		print("\n=== Artifacts ===")
 		for k, v in {
-			"bl2_bp": self.bl2_bp,
-			"bl2_bp_srec": self.bl2_bp_srec,
+			"spl_bp": self.spl_bp,
+			"spl_bp_srec": self.spl_bp_srec,
 			"fip_bin": self.fip_bin,
 			"fip_srec": self.fip_srec,
 		}.items():
@@ -422,6 +436,7 @@ def parse_args(argv=None) -> argparse.Namespace:
 	p.add_argument("--fip-align")
 	p.add_argument("--fip-vma")
 	p.add_argument("--bl2-bp-vma")
+	p.add_argument("--spl-bp-vma", help="V4H: override SPL BP VMA")
 	p.add_argument("--fip-tb-kind", choices=["soc","tb"])
 
 	return p.parse_args(argv)

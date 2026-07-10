@@ -206,9 +206,9 @@ BID = ["1", "2FA", "810"]
 [sparrow-hawk]
 ethernet = ["e6800000", "e6810000"]
 ethernet_udp_index = ["0", "1"]
-# V4H uses SA0 (renesas-rcar4-sa0 binman etype), not bpgen — bl2_dest here is the
+# V4H uses SA0 (renesas-rcar4-sa0 binman etype), not bpgen — spl_dest here is the
 # SPL_TEXT_BASE the SA0 header points the CR52/ROM loader to, per u-boot-sst .config.
-bl2_dest  = "0xEB210000"
+spl_dest  = "0xEB210000"
 fconf_dtb_base = "0x08130000"
 
 # Uload bootloader
@@ -216,28 +216,26 @@ flash_address = ["00000", "60000", "5F300"]
 load_address = "0x48000000"
 
 # Bootloader flash SPI
-# BL2 here is the SA0 header + SPL (sa0.bin), FIP is the FIT image (u-boot.itb) —
-# split out of the monolithic flash.bin so the standard bl2/fip pipeline (like V2H)
-# can build and flash them independently.
-# BL2/FIP = [VMA, flash offset]. FIP offset 0x80000 = CONFIG_SYS_SPI_U_BOOT_OFFS.
+# SPL here is the SA0 header + SPL (sa0.bin), FIP is the FIT image (u-boot.itb).
+# SPL/FIP = [VMA, flash offset]. FIP offset 0x80000 = CONFIG_SYS_SPI_U_BOOT_OFFS.
 # BID offset 0x2C0000 (not the 0x5F300 used by the V2H boards below) — flash.bin's
 # SA0+SPL region only spans 0x0-0x61E40ish and FIT sits at 0x80000-0x22AAA7ish, so
 # 0x2C0000 is a safe 64KB-sector-aligned gap before PCIE at 0x300000.
 [sparrow-hawk.xspi]
-BL2 = ["EB210000", "00000"]
+SPL = ["EB210000", "00000"]
 FIP = ["00000", "80000"]
 PCIE = ["300000"]
 BID = ["00810", "2C0000"]
 
 # Bootloader flash eMMC
 [sparrow-hawk.emmc]
-BL2 = ["1", "1", "8101E00"]
+SPL = ["1", "1", "8101E00"]
 FIP = ["1", "300", "44000000", "2", "8"]
 BID = ["1", "2FA", "810"]
 
 # Bootloader flash eSD
 [sparrow-hawk.esd]
-BL2_BP_ESD = ["1", "1"]
-BL2 = ["8"]
+SPL_BP_ESD = ["1", "1"]
+SPL = ["8"]
 BID = ["762"]
 FIP = ["768"]
