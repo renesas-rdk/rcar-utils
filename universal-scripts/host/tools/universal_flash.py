@@ -51,6 +51,7 @@ class FlashInfo:
     bl2: str = ""
     fip: str = ""
     pcie_fw: str = ""
+    tee: str = ""
 
 class UniversalFlashUtil:
     def __init__(self):
@@ -178,8 +179,9 @@ class UniversalFlashUtil:
             print("\nOperation cancelled by user.")
             return False
 
-        # Use fixed baud rate - U-Boot console requires 115200, except
-        # sparrow-hawk whose Flash Writer/CR52 loader talks at 921600 from power-on.
+        # This is the IPL Flash Writer baud rate.  Sparrow-Hawk's CR52 Flash
+        # Writer talks at 921600 from power-on; its normal U-Boot console is
+        # still 115200 and is selected separately for rootfs flashing below.
         if self.selected_board_name == "sparrow-hawk":
             self.selected_baud_rate = SPARROW_HAWK_BAUD_RATE
         else:
@@ -256,6 +258,7 @@ class UniversalFlashUtil:
             bl2=board_data.get("bl2", ""),
             fip=board_data.get("fip", ""),
             pcie_fw=board_data.get("pcie_fw", ""),
+            tee=board_data.get("tee", ""),
         )
 
     def print_selected_info(self):
@@ -562,6 +565,19 @@ class UniversalFlashUtil:
         if self.selected_info.pcie_fw:
             bootloader_args += ['--image_pcie_fw', f"{self.__imagesDir}/{self.selected_info.pcie_fw}"]
 
+        # V4H only: stage a raw tee binary on SPI-NOR if one is configured
+        # and actually present under target/images/atf/ (same location
+        # firmware_compile.py's legacy-board tee lookup uses). Skipped
+        # otherwise — this does not by itself enable OP-TEE on Sparrow-Hawk;
+        # see README.md's "Where OP-TEE lives for Sparrow-Hawk" section. The
+        # `tee` field is also used by legacy boards' firmware_compile.py
+        # (via fiptool --tos-fw) — that path is unrelated and unaffected.
+        if (self.boards_data[self.selected_board_name].get("soc") == "v4h"
+                and self.selected_info.tee):
+            tee_path = f"{self.__imagesDir}/atf/{self.selected_info.tee}"
+            if os.path.exists(tee_path):
+                bootloader_args += ['--image_tee', tee_path]
+
         if self.selected_port_by_id:
             bootloader_args.extend(['--serial_port_by_id', self.selected_port_by_id])
 
@@ -585,11 +601,18 @@ class UniversalFlashUtil:
         """Flash rootfs via serial (UDP/OTG fastboot)"""
         print("Writing rootfs...")
 
+        # Rootfs flashing talks to U-Boot in normal boot mode, not to the
+        # Flash Writer.  U-Boot's console is 115200 on every supported board,
+        # including Sparrow-Hawk (whose IPL Flash Writer requires 921600).
+        rootfs_baud_rate = DEFAULT_BAUD_RATE
+        if self.selected_baud_rate != rootfs_baud_rate:
+            print(f"Using U-Boot console baud rate for rootfs flashing: {rootfs_baud_rate}")
+
         # Prepare arguments for SD Flash
         sdflash_args = [
             '--board_name', f"{self.selected_board_name}",
             '--serial_port', f"{self.selected_port}",
-            '--serial_port_baud', f"{self.selected_baud_rate}",
+            '--serial_port_baud', f"{rootfs_baud_rate}",
             '--fastboot_type', f"{self.selected_info.rootfs_flash_method}",
             '--image_rootfs', f"{self.__imagesDir}/{self.selected_info.rootfs}",
         ]

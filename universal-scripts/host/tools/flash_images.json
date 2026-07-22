@@ -102,6 +102,6 @@
         "flash_writer": "Flash_writer_sparrow_hawk_CR52.mot",
         "ipl_flash_method": "xspi",
         "rootfs": "core-image-minimal.wic",
-        "rootfs_flash_method": "otg"
+        "rootfs_flash_method": "udp"
     }
 }

@@ -85,13 +85,23 @@ If you want to specify different file paths or change the serial port settings o
 - **--board_name**: Board name to flash bootloader.
 - **--flash_method**: Flash method to use (`xspi`, `emmc`, or `esd`). When `esd` is selected the script writes directly to an SD card reader using `dd` and no serial connection is required.
 - **--serial_port**: Serial port to use for communication with the board.
-- **--serial_port_baud**: Baud rate for the serial port (must be `115200`).
+- **--serial_port_baud**: Baud rate for the serial port (`115200` for most boards; Sparrow-Hawk's Flash Writer runs at `921600` from power-on).
 - **--image_writer**: Path to the Flash Writer image.
-- **--image_bl2**: Path to the BL2 image.
-- **--image_bl2_esd**: Path to the BL2 eSD image.
-- **--image_fip**: Path to the FIP image.
+- **--image_bl2**: Path to the BL2 image (V2L/V2H/G2L boards).
+- **--image_bl2_esd**: Path to the BL2 eSD image (V2L/V2H/G2L boards).
+- **--image_spl**: *(V4H only)* Path to the SPL image — SA0 header + SPL binary. Required instead of `--image_bl2` when `--board_name sparrow-hawk`.
+- **--image_spl_esd**: *(V4H only)* Path to the SPL eSD image. Required instead of `--image_bl2_esd` for eSD flashing on Sparrow-Hawk.
+- **--image_fip**: Path to the FIP image (a FIT image, `u-boot.itb`, for `sparrow-hawk`).
 - **--image_bid**: Path to the board identification image.
+- **--image_pcie_fw**: *(V4H only, optional)* Path to the PCIe PHY firmware (`rcar_gen4_pcie.bin`). If provided, it is flashed after SPL/FIP.
+- **--image_tee**: *(V4H only, optional)* Path to a raw OP-TEE/tee binary to write to a dedicated SPI-NOR offset (`TEE` in `boards_flash_config.toml`). If provided, it is flashed after the PCIe firmware and before board identification. Skipped entirely if not given — this only stages the binary on-device and does not by itself enable OP-TEE on Sparrow-Hawk; see the main README's "Where OP-TEE lives for Sparrow-Hawk" section.
 - **--esd_device**: Raw device path of the SD card (`esd` method only).
+
+**Sparrow-Hawk (RZ/V4H) notes:**
+- Use `--image_spl`/`--image_spl_esd` instead of `--image_bl2`/`--image_bl2_esd` — the board's `__is_v4h()` check (triggered by `--board_name sparrow-hawk`) looks up the `SPL` key in `boards_flash_config.toml` instead of `BL2`.
+- Only `--flash_method xspi` has been validated on real Sparrow-Hawk hardware. xSPI writes use the `XLS3` chunked binary protocol instead of `XLS2` (SREC), and the `XCS` full-chip erase / `SUP` baud-switch steps are skipped — the Flash Writer already talks at 921600 baud and erases per-chunk internally.
+- **`--flash_method emmc` does not currently work for Sparrow-Hawk**: `__handle_emmc_flash()` is shared code that unconditionally sends the `SUP` command, which this board's Flash Writer does not support (`command not found`), so the emmc path will hang/fail. `esd` is wired generically (via the same `SPL` key lookup) but has not been validated on Sparrow-Hawk hardware.
+- See the main [`universal-scripts/host/tools/README.md`](../README.md#rzv4h-sparrow-hawk-flashing-flow) for the full flow diagram and comparison with the legacy boards.
 
 **eSD flashing**
 

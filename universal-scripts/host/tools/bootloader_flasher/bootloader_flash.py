@@ -160,6 +160,18 @@ class BootloaderFlashUtil:
 									action='store',
 									type=str,
 									help='Path to PCIe PHY firmware (rcar_gen4_pcie.bin) for V4H boards.')
+		self.__parser.add_argument('--image_tee',
+									default=None,
+									dest='teeImage',
+									action='store',
+									type=str,
+									help='[V4H, optional] Path to a raw OP-TEE/tee binary to write to a dedicated '
+										'SPI-NOR offset (TEE in boards_flash_config.toml). Skipped if not given. '
+										'Note: nothing in Sparrow-Hawk\'s current SA0/SPL -> U-Boot proper boot path '
+										'reads this offset (no FIT loadables entry points at it) — writing it here '
+										'stages the binary on-device for a future boot flow, it does not by itself '
+										'enable OP-TEE on this board. See README.md\'s "Where OP-TEE lives for '
+										'Sparrow-Hawk" section.')
 		self.__parser.add_argument('--esd_device',
 									dest='esdDevice',
 									action='store',
@@ -286,6 +298,9 @@ class BootloaderFlashUtil:
 			exit()
 		if self.__args.pcieFwImage and not os.path.exists(self.__args.pcieFwImage):
 			print(f"The file {self.__args.pcieFwImage} does not exist.")
+			exit()
+		if self.__args.teeImage and not os.path.exists(self.__args.teeImage):
+			print(f"The file {self.__args.teeImage} does not exist.")
 			exit()
 		if not os.path.exists(self.__args.bidImage):
 			print(f"The file {self.__args.bidImage} does not exist.")
@@ -504,6 +519,14 @@ class BootloaderFlashUtil:
 			PcieFlashAddress = flashAddress["PCIE"]
 			self.__write_binary_chunked_xls3(
 				"PCIe firmware (rcar_gen4_pcie.bin)", self.__args.pcieFwImage, int(PcieFlashAddress[0], 16))
+
+		# Write a raw OP-TEE/tee binary, if provided. Optional and skipped
+		# entirely when not given — see --image_tee's help text for what
+		# this does and does not do on Sparrow-Hawk's current boot flow.
+		if self.__args.teeImage:
+			TeeFlashAddress = flashAddress["TEE"]
+			self.__write_binary_chunked_xls3(
+				"tee (OP-TEE, staged only)", self.__args.teeImage, int(TeeFlashAddress[0], 16))
 
 		# Write board identification
 		BIDFlashAddress = flashAddress["BID"]

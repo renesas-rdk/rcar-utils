@@ -10,7 +10,6 @@ import glob
 from subprocess import Popen, PIPE, CalledProcessError
 import platform
 from serial.tools.list_ports import comports
-import json
 import sys
 if sys.version_info >= (3, 11):  # pragma: Python version >=3.11
     import tomllib
@@ -389,7 +388,10 @@ class SdFlashUtil:
 		# Run fastboot commands only once (no retry)
 		self.__runSubprocessCommand(f"{fastboot_command} getvar version-bootloader")
 		self.__runSubprocessCommand(f"{fastboot_command} getvar version")
-		self.__runSubprocessCommand(f"{fastboot_command} flash rawimg {self.__args.rootfsImage}")
+		# Flash the current MMC user area.  This is also the target used by
+		# the OTG flow.  In particular, Sparrow-Hawk's flashed U-Boot does
+		# not implement the legacy `rawimg` target, but does expose `mmc0`.
+		self.__runSubprocessCommand(f"{fastboot_command} flash mmc0 {self.__args.rootfsImage}")
 
 	def __handle_otg_fastboot(self):
 		print('fastboot usb otg mode')
@@ -413,7 +415,11 @@ class SdFlashUtil:
 		try:
 			subprocess.run(command, shell=True, check=True)
 		except CalledProcessError as e:
-			die(msg=f"Command '{command}' failed with error: {e.stderr.decode().strip()}")
+			# stderr is None unless subprocess.run() was asked to capture it.
+			# Keep the original command failure visible instead of masking it
+			# with AttributeError while formatting the error message.
+			detail = e.stderr.decode(errors='replace').strip() if e.stderr else str(e)
+			die(msg=f"Command '{command}' failed: {detail}")
 
 	def __writeSerialCmd(self, cmd):
 		self.__serialPort.write(f'{cmd}\r'.encode())
