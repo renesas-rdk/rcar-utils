@@ -51,7 +51,6 @@ class FlashInfo:
     bl2: str = ""
     fip: str = ""
     pcie_fw: str = ""
-    tee: str = ""
 
 class UniversalFlashUtil:
     def __init__(self):
@@ -258,7 +257,6 @@ class UniversalFlashUtil:
             bl2=board_data.get("bl2", ""),
             fip=board_data.get("fip", ""),
             pcie_fw=board_data.get("pcie_fw", ""),
-            tee=board_data.get("tee", ""),
         )
 
     def print_selected_info(self):
@@ -564,19 +562,6 @@ class UniversalFlashUtil:
             bootloader_args += ['--image_fip', f"{self.__imagesDir}/{self.selected_info.fip}"]
         if self.selected_info.pcie_fw:
             bootloader_args += ['--image_pcie_fw', f"{self.__imagesDir}/{self.selected_info.pcie_fw}"]
-
-        # V4H only: stage a raw tee binary on SPI-NOR if one is configured
-        # and actually present under target/images/atf/ (same location
-        # firmware_compile.py's legacy-board tee lookup uses). Skipped
-        # otherwise — this does not by itself enable OP-TEE on Sparrow-Hawk;
-        # see README.md's "Where OP-TEE lives for Sparrow-Hawk" section. The
-        # `tee` field is also used by legacy boards' firmware_compile.py
-        # (via fiptool --tos-fw) — that path is unrelated and unaffected.
-        if (self.boards_data[self.selected_board_name].get("soc") == "v4h"
-                and self.selected_info.tee):
-            tee_path = f"{self.__imagesDir}/atf/{self.selected_info.tee}"
-            if os.path.exists(tee_path):
-                bootloader_args += ['--image_tee', tee_path]
 
         if self.selected_port_by_id:
             bootloader_args.extend(['--serial_port_by_id', self.selected_port_by_id])

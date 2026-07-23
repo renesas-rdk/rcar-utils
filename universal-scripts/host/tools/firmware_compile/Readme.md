@@ -110,7 +110,12 @@ For `--soc v4h`, the script takes a different path (`run_all_v4h()`) instead of 
 No `bpgen`/`fiptool` invocation happens for V4H — `--bl2`, `--atf-fdts`, `--uboot-dtbs`, `--bl31`, `--u-boot-nodtb` are unused in this path. Instead, `--sa0-bin`/`--fit-itb` (or the equivalent auto-discovered paths from `flash_images.json`'s `spl`/`fip` fields) must point to already-built artifacts.
 
 > [!IMPORTANT]
-> Unlike the legacy pipeline, **`run_all_v4h()` never reads the `tee` field** and has no `--tos-fw`-equivalent step — it only copies whatever `sa0.bin`/`u-boot.itb` were already built by `u-boot-sst`. Embedding BL31/OP-TEE directly into `u-boot.itb` (via extra `atf-1`/`tee-1` binman FIT nodes) was tried and **does not work**: SPL's FIT loader only copies loadables' raw bytes to their `load` address, it does not invoke the `U_BOOT_FIT_LOADABLE_HANDLER` handlers in `board/renesas/common/gen4-common.c` that perform the actual BL31/OP-TEE handoff — those only run when U-Boot proper's `bootm` processes a FIT (e.g. the SD-card `fitImage` used by ticket AMECSSTSWA-400), never when SPL loads `u-boot.itb`. On real hardware this caused SPL to overwrite the just-loaded U-Boot with OP-TEE (both targeted address `0x44100000`) and hang right after `EVTB1 board detected`. Setting `"tee": "..."` on the `sparrow-hawk` entry in `flash_images.json` remains unread by this script; see the main [README's OP-TEE section](../README.md#where-op-tee-lives-for-sparrow-hawk) for the full analysis. OP-TEE for this board is out of scope for `rz-utils` — it requires a `fitImage` built and flashed outside this tool.
+> Unlike the legacy pipeline, **`run_all_v4h()` has no `--tos-fw` step**. It
+> copies only the SPI loader inputs (`sa0.bin` and `u-boot.itb`). Do not embed
+> BL31/OP-TEE in that FIT: SPL only copies loadables and cannot construct the
+> EL3 handoff. V4H OP-TEE is supplied by the Yocto rootfs WIC as separate p2
+> `/boot` files and is consumed only by a direct-capable U-Boot
+> (`tfa_prepare`/`tfa_boot`).
 
 | File Name                | Description                                              |
 | ------------------------ | ---------------------------------------------------------|

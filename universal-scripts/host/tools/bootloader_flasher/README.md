@@ -94,7 +94,6 @@ If you want to specify different file paths or change the serial port settings o
 - **--image_fip**: Path to the FIP image (a FIT image, `u-boot.itb`, for `sparrow-hawk`).
 - **--image_bid**: Path to the board identification image.
 - **--image_pcie_fw**: *(V4H only, optional)* Path to the PCIe PHY firmware (`rcar_gen4_pcie.bin`). If provided, it is flashed after SPL/FIP.
-- **--image_tee**: *(V4H only, optional)* Path to a raw OP-TEE/tee binary to write to a dedicated SPI-NOR offset (`TEE` in `boards_flash_config.toml`). If provided, it is flashed after the PCIe firmware and before board identification. Skipped entirely if not given — this only stages the binary on-device and does not by itself enable OP-TEE on Sparrow-Hawk; see the main README's "Where OP-TEE lives for Sparrow-Hawk" section.
 - **--esd_device**: Raw device path of the SD card (`esd` method only).
 
 **Sparrow-Hawk (RZ/V4H) notes:**

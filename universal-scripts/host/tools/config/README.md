@@ -127,7 +127,6 @@ SPL = ["EB210000", "00000"]
 FIP = ["00000", "80000"]
 PCIE = ["300000"]
 BID = ["00810", "2C0000"]
-TEE = ["1000000"]
 
 # Bootloader flash eMMC
 [sparrow-hawk.emmc]
@@ -146,7 +145,6 @@ FIP = ["768"]
 Key differences from the `[<board_name>.xspi]` template above:
 - **`SPL`** replaces `BL2` — same `[srec_top_address/VMA, flash_address]` shape, but the value at index 0 (`EB210000`) is `spl_dest` (the SPL's link-time text base, i.e. where the CR52/ROM loader expects it in RAM), not a QSPI offset.
 - **`PCIE`** — a single flash offset (no VMA) for the optional PCIe PHY firmware blob (`rcar_gen4_pcie.bin`). Only written if the board's `flash_images.json` entry sets `pcie_fw`.
-- **`TEE`** — a single flash offset (no VMA), currently `0x1000000` (16MB), for an optional raw OP-TEE/tee binary. Only written if the board's `flash_images.json` entry sets `tee` to a binary that exists under `target/images/atf/`; skipped entirely otherwise. This is a staging-only offset (nothing in Sparrow-Hawk's current boot path reads it) — see the `TEE` comment block in `boards_flash_config.toml` and the main README's "Where OP-TEE lives for Sparrow-Hawk" section for why this offset must never collide with any past or present value of `CFG_SPL_PLATFORM_SETTINGS_OFFSET`.
 - **`BID` offset (`0x2C0000`)** is intentionally different from the `0x5F300` used by the V2H boards above — it sits in a safe, 64KB-sector-aligned gap after the SPL+FIT region and before `PCIE` at `0x300000`.
 - Same `esd` key convention as other boards (`SPL_BP_ESD` instead of `BL2_BP_ESD`).
 

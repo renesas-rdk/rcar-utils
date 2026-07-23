@@ -96,7 +96,6 @@
         "fip": "fip_sparrow-hawk.bin",
         "pcie_fw": "rcar_gen4_pcie.bin",
         "board_identification": "sparrow-hawk-platform-settings.bin",
-        "tee": "tee-rz-cmn-v4h.bin",
         "atf_fdts": "r8a779g3-sparrow-hawk.dtb",
         "uboot_dtb": "r8a779g3-sparrow-hawk.dtb",
         "flash_writer": "Flash_writer_sparrow_hawk_CR52.mot",

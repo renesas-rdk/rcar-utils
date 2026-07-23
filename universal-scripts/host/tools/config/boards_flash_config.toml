@@ -232,38 +232,17 @@ load_address = "0x48000000"
 # ticket AMECSSTSWA-400). Confirmed on real hardware: with tee-1's `load`
 # address colliding with U-Boot's own load address, SPL loaded OP-TEE directly
 # on top of the just-loaded U-Boot before jumping to it, hanging the board
-# right after "EVTB1 board detected". OP-TEE for Sparrow-Hawk must go through
-# the fitImage/SD-card path, not this SPI-NOR FIP. rz-utils does not build or
-# flash a fitImage — OP-TEE-enabled images for this board are built and
-# flashed outside this tool; see project update docs for details.
+# right after "EVTB1 board detected". This SPI-NOR FIT must therefore remain
+# U-Boot-only. A separate direct raw flow was later validated: a U-Boot proper
+# build with `tfa_prepare` loads BL31 and tee-raw from rootfs /boot, builds the
+# EL3 handoff and uses the OP-TEE node already present in the kernel DTB before
+# `booti`. rz-utils deliberately has no V4H SPI-NOR TEE staging path; see
+# README.md's "Where OP-TEE lives for Sparrow-Hawk" section.
 [sparrow-hawk.xspi]
 SPL = ["EB210000", "00000"]
 FIP = ["00000", "80000"]
 PCIE = ["300000"]
 BID = ["00810", "2C0000"]
-# TEE offset — used only with bootloader_flash.py's --image_tee, which is
-# skipped entirely when no tee binary is configured/found. Staging-only for
-# now: nothing in the current SA0/SPL -> U-Boot proper boot path reads this
-# offset (see the NOTE above and README.md's "Where OP-TEE lives for
-# Sparrow-Hawk" section).
-#
-# IMPORTANT: this offset must never collide with any value
-# CFG_SPL_PLATFORM_SETTINGS_OFFSET (include/configs/rz-cmn.h in u-boot-sst)
-# has EVER held, current or historical, on any IPL build that might still be
-# flashed on a board. It was 0x400000 before commit "rz-cmn: fix V4H BID
-# boot defaults" moved it to 0x2C0000 (see BID above) — an SPL built before
-# that commit (e.g. commit a47a8308e43, still in the wild on at least one
-# board seen during bring-up) reads board identification from 0x400000, so
-# writing a tee binary there overwrote its board_id/model_string with tee
-# data and corrupted boot (confirmed on real hardware: model_id read back
-# as garbage, board hung after "Starting kernel ..."). 0x1000000 (16MB) was
-# chosen for a large margin from every offset above (SPL/FIP end ~2.7MB,
-# BID current+historical at 0x2C0000/0x400000, PCIE at 0x300000), with
-# ~48MB of headroom before the 512Mbit (64MB / 0x4000000) total SPI-NOR
-# capacity. Re-verify against u-boot-sst's full offset history before ever
-# reusing or changing this value.
-TEE = ["1000000"]
-
 # Bootloader flash eMMC
 [sparrow-hawk.emmc]
 SPL = ["1", "1", "8101E00"]
