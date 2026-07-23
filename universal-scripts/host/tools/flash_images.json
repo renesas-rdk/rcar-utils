@@ -100,7 +100,7 @@
         "uboot_dtb": "r8a779g3-sparrow-hawk.dtb",
         "flash_writer": "Flash_writer_sparrow_hawk_CR52.mot",
         "ipl_flash_method": "xspi",
-        "rootfs": "core-image-minimal.wic",
+        "rootfs": "core-image-weston.wic",
         "rootfs_flash_method": "udp"
     }
 }

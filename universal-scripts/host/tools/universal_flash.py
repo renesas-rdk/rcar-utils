@@ -216,10 +216,19 @@ class UniversalFlashUtil:
         board_soc = self.boards_data[self.selected_board_name]["soc"]
 
         if board_soc == "v4h":
-            # V4H: SA0 header+SPL and FIT are pre-built by the U-Boot binman flow,
-            # already stored as .bin in target/images/.  No assembly needed here.
-            # flash_images.json points to .bin (not .srec) for XLS3 binary mode.
-            print("[build] V4H artifacts already prepared (SA0+SPL + u-boot.itb)")
+            # V4H binman produces the raw SPI components. Convert them into the
+            # stable names consumed by the XLS3 flasher on every invocation.
+            raw_sa0 = os.path.join(self.__imagesDir, "u-boot", "sa0-rz-cmn.bin")
+            raw_itb = os.path.join(self.__imagesDir, "u-boot", "u-boot-rz-cmn.itb")
+            args = parse_args([
+                "--board", self.selected_board_name,
+                "--soc", "v4h",
+                "--method", self.boards_data[self.selected_board_name]["ipl_flash_method"],
+                "--sa0-bin", raw_sa0,
+                "--fit-itb", raw_itb,
+                "--out-dir", self.__imagesDir,
+            ])
+            FirmwareBuilder(args).run_all_v4h()
             return
 
         bl2_path = os.path.join(self.__imagesDir, "atf", f"bl2-{self.selected_info.ipl_flash_method}-rz-cmn.bin")
