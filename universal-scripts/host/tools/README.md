@@ -189,7 +189,8 @@ The `flash_images.json` file contains predefined image mappings for supported de
 - **tee** *(legacy boards only, optional)*: OP-TEE BL32 binary name. If it
   exists under `target/images/atf/`, `fiptool --tos-fw` includes it in the
   legacy BL2/FIP boot chain. It is not a valid `sparrow-hawk` field: V4H
-  payloads live in rootfs p2 `/boot`, never at a SPI-NOR TEE offset.
+  payloads are installed by Yocto in rootfs p2 `/boot`, never at a SPI-NOR
+  TEE offset. rz-utils treats that WIC payload as opaque.
 - **atf_fdts**: FCONF device tree name
 - **uboot_dtb**: U-boot device tree name
 - **flash_writer**: Flash Writer image name
@@ -213,7 +214,7 @@ This table below lists the available options (and sensible defaults) for `ipl_fl
 **Notes:**
 - *IPL flash method*: `emmc` for `rzv2h` devices is **not supported yet**.
 - *RZ/G2L-SBC*: `otg` flashing is not supported. This board supports UDP flashing only.
-- *Sparrow-Hawk (RZ/V4H)* uses a different set of images and a different serial protocol than the boards above — see [RZ/V4H (Sparrow-Hawk) flashing flow](#rzv4h-sparrow-hawk-flashing-flow). Only `xspi` has been validated on real hardware (flash + boot to Linux confirmed). `boards_flash_config.toml` also has `[sparrow-hawk.emmc]`/`[sparrow-hawk.esd]` tables and the code paths are generically wired for V4H (via the `SPL` key), but **`emmc` is not currently usable**: `__handle_emmc_flash()` unconditionally sends the `SUP` command to switch to 921600 baud, which Sparrow-Hawk's Flash Writer does not support (it boots at 921600 already and replies `command not found`), so this path will hang/fail. `esd` is implemented but has not been validated on hardware for this board.
+- *Sparrow-Hawk (RZ/V4H)* uses a different set of images and a different serial protocol than the boards above — see [RZ/V4H (Sparrow-Hawk) flashing flow](#rzv4h-sparrow-hawk-flashing-flow). The `xspi` serial protocol has historical hardware evidence. Direct OP-TEE boot and runtime validation are owned by the U-Boot/Yocto release, not by rz-utils. `boards_flash_config.toml` also has `[sparrow-hawk.emmc]`/`[sparrow-hawk.esd]` tables and the code paths are generically wired for V4H (via the `SPL` key), but **`emmc` is not currently usable**: `__handle_emmc_flash()` unconditionally sends the `SUP` command to switch to 921600 baud, which Sparrow-Hawk's Flash Writer does not support (it boots at 921600 already and replies `command not found`), so this path will hang/fail. `esd` is implemented but has not been validated on hardware for this board.
 - *Sparrow-Hawk (RZ/V4H)*: `otg` rootfs flashing is not supported on this board. This board supports UDP flashing only, over Ethernet port 0.
 
 ---
@@ -264,9 +265,9 @@ Example of a `v4h` board configuration (Sparrow-Hawk), using `spl`/`pcie_fw` ins
     "board_identification": "sparrow-hawk-platform-settings.bin",
     "atf_fdts": "r8a779g3-sparrow-hawk.dtb",
     "uboot_dtb": "r8a779g3-sparrow-hawk.dtb",
-    "flash_writer": "Flash_writer_sparrow_hawk_CR52.mot",
+    "flash_writer": "Flash_Writer_SCIF_sparrow-hawk.mot",
     "ipl_flash_method": "xspi",
-    "rootfs": "core-image-minimal.wic",
+    "rootfs": "core-image-weston.wic",
     "rootfs_flash_method": "udp"
 }
 ```
@@ -418,12 +419,12 @@ Sparrow-Hawk (RZ/V4H, R8A779G3) shares the same `universal_flash.py` entry point
 Key differences from the legacy RZV2L/RZV2H/RZG2L flow:
 
 1. **Different image set** — no BL2/FIP pair. Instead: **SPL** (SA0 header + SPL binary, `sa0.bin`), **FIP** as a **FIT image** (`u-boot.itb`), and an optional **PCIe PHY firmware** blob (`rcar_gen4_pcie.bin`) that no other board flashes.
-2. **Pre-built, not compiled at flash time** — for other boards, `firmware_compile.py` runs `bpgen`/`fiptool` at flash time to assemble BL2/FIP. For `soc: v4h` boards this step is skipped entirely (`prepare_binaries()` returns early): the SA0+SPL and FIT artifacts are produced by the standalone U-Boot (`binman` `renesas-rcar4-sa0` + FIT) build and are expected to already be present under `target/images/` (named per the `spl`/`fip` fields in `flash_images.json`).
+2. **Pre-built raw payloads, normalized at flash time** — for other boards, `firmware_compile.py` runs `bpgen`/`fiptool` at flash time to assemble BL2/FIP. V4H does not run either tool: standalone U-Boot (`binman` `renesas-rcar4-sa0` + FIT) produces `u-boot/sa0-rz-cmn.bin` and `u-boot/u-boot-rz-cmn.itb`. Before flashing, `prepare_binaries()` runs `run_all_v4h()` to copy them to the stable `spl_bp_sparrow-hawk.bin` and `fip_sparrow-hawk.bin` names consumed by the XLS3 flasher (and also emits SREC evidence files). The raw inputs must therefore be from the same release as the WIC.
 3. **Different serial protocol** — `XLS3` (raw binary, chunked in 128KB blocks) instead of `XLS2` (SREC, single upload). This board's Flash Writer has an unreliable SREC→SPI address mapping for large images, so binary chunked mode is used instead, matching the vendor reference flashing tool's behavior.
 4. **Different Flash Writer behavior** — boots directly at 921600 baud (the `SUP` speed-up command is not supported — it returns `command not found`) and has no `XCS` full-chip erase step (same as `rzv2h-evk`/`rzv2h-rdk`).
 
 > [!NOTE]
-> Only the **`xspi`** flash method has been validated on real Sparrow-Hawk hardware (flash + boot to Linux confirmed). `[sparrow-hawk.emmc]`/`[sparrow-hawk.esd]` exist in `boards_flash_config.toml` and the bootloader-flash code paths are generically wired for V4H, but **`emmc` is currently broken** for this board: `__handle_emmc_flash()` unconditionally sends `SUP` to switch to 921600 baud, which Sparrow-Hawk's Flash Writer does not support. `esd` is implemented but not yet validated on hardware.
+> The **`xspi`** serial protocol has historical Sparrow-Hawk hardware evidence. Direct OP-TEE boot/runtime validation belongs to the matching U-Boot and Yocto release, after rz-utils has flashed its supplied SPL/FIP and WIC. `[sparrow-hawk.emmc]`/`[sparrow-hawk.esd]` exist in `boards_flash_config.toml` and the bootloader-flash code paths are generically wired for V4H, but **`emmc` is currently broken** for this board: `__handle_emmc_flash()` unconditionally sends `SUP` to switch to 921600 baud, which this board's Flash Writer does not support. `esd` is implemented but not yet validated on Sparrow-Hawk hardware.
 
 > [!NOTE]
 > **If Linux hangs at `Waiting for root device /dev/mmcblk1p2...`** after a successful boot to `Starting kernel ...`: the default env's `mmc_args` assumes the rootfs SD card enumerates as `mmcblk1`, but on some hardware it enumerates as `mmcblk0` instead. Fix from the U-Boot prompt: `setenv mmc_args 'setenv bootargs rw rootwait earlycon root=/dev/mmcblk0p2'; saveenv; reset`. This is unrelated to OP-TEE/fitImage — it affects the plain SD-card boot path too.
@@ -442,7 +443,7 @@ flowchart TD
   D --> E{"Write IPL?"}:::decision
   E -->|No| Z1[Skip to RootFS step]:::action
   E -->|Yes| F{"IPL method"}:::decision
-  F -->|BootloaderFlash| G["soc == v4h:\nskip bpgen/fiptool build,\nartifacts already in target/images/"]:::v4h
+  F -->|BootloaderFlash| G["soc == v4h:\nskip bpgen/fiptool; normalize\nraw SA0/FIT to SPL/FIP names"]:::v4h
   F -->|ULoadFlash| F2[Not implemented for V4H]:::action
 
   G --> H[Write IPL by BootloaderFlash]:::action
@@ -471,9 +472,9 @@ flowchart TD
 
 | Step | Legacy flow (RZV2L/RZV2H/RZG2L) | Sparrow-Hawk (RZ/V4H) flow |
 |---|---|---|
-| Firmware build | `bpgen` (BL2+BP) + `fiptool` (FIP) run at flash time | Skipped — SA0+SPL and FIT are pre-built elsewhere and copied into `target/images/` |
-| Images written | BL2 (`.srec`), FIP (`.srec`), BID | SPL (`.bin`), FIP=FIT (`.bin`), optional PCIe firmware (`.bin`), optional tee SPI staging (`.bin`, not booted), BID |
-| `flash_images.json` key | `bl2` | `spl` (+ optional `pcie_fw`; `tee` is staging-only) |
+| Firmware build | `bpgen` (BL2+BP) + `fiptool` (FIP) run at flash time | No `bpgen`/`fiptool`; raw SA0/FIT are pre-built elsewhere, then copied to the SPL/FIP flash names |
+| Images written | BL2 (`.srec`), FIP (`.srec`), BID | SPL (`.bin`), FIP=FIT (`.bin`), optional PCIe firmware (`.bin`), BID |
+| `flash_images.json` key | `bl2` | `spl` (+ optional `pcie_fw`; no V4H `tee` key) |
 | `boards_flash_config.toml` key | `[<board>.xspi] BL2 = [...]` | `[sparrow-hawk.xspi] SPL = [...]` |
 | Serial protocol | `XLS2` (SREC, one-shot upload) | `XLS3` (raw binary, 128KB chunked) |
 | Baud rate | 115200 → `SUP` command switches to 921600 | 921600 from power-on; `SUP` skipped |
@@ -485,7 +486,8 @@ For the full field-by-field flash offsets, see `bootloader_flasher/README.md` an
 ### Where OP-TEE lives for Sparrow-Hawk
 
 There are two supported OP-TEE models. Do not apply the legacy FIP rule to
-Sparrow-Hawk.
+Sparrow-Hawk. This is an artifact-ownership boundary, not a rz-utils OP-TEE
+execution or test path.
 
 | Flow | Boards / mechanism | Sparrow-Hawk status |
 |---|---|---|
@@ -508,7 +510,8 @@ after validating the fixed load addresses. This is a loader capability, not a
 property of a raw file written to SPI-NOR.
 
 The Yocto WIC must contain these files in rootfs p2 (`mmc 0:2`), not in the
-small FAT boot partition:
+small FAT boot partition. rz-utils flashes the WIC as an opaque rootfs image;
+it does not load, inspect, update, or validate these files:
 
 | Rootfs file | Load address | Expected size | CRC32 |
 |---|---:|---:|---:|
@@ -520,10 +523,11 @@ small FAT boot partition:
 | `/boot/dtb/renesas/r8a779g3-sparrow-hawk.dtb` | `0x48000000` | DTB dependent | n/a |
 
 Use the generated `.env` values, not historic hard-coded CRC values or a
-`-v5` filename. A direct-capable U-Boot must import the `.env`, preserve each
-load's size, validate its CRC32, run `tfa_prepare <bl31> <size> <tee> <size>`,
-then call `booti`. Do not call `bootm` on `fitImage`, write a raw TEE to SPI,
-or `saveenv`. The production DTB in p2 must already provide
+`-v5` filename. A direct-capable U-Boot imports the `.env`, preserves each
+load's size, verifies its CRC32 with `crc32 -v`, runs
+`tfa_prepare <bl31> <size> <tee> <size>`, then calls `booti`. Do not call
+`bootm` on `fitImage`, write a raw TEE to SPI, or `saveenv`. The production
+DTB in p2 must already provide
 `/firmware/optee { compatible = "linaro,optee-tz"; method = "smc"; };`; the
 old runtime `fdt mknode` workaround is recovery-only.
 
@@ -539,6 +543,12 @@ Therefore `uEnv.txt` continues to use `prodsdboot=run mmc_do_boot`; it must
 not invoke `tfa_boot` itself. If the manifest, address, size, or CRC check
 fails, `tfa_boot` must stop at the U-Boot console without jumping to EL3.
 
+For a manual U-Boot-console test after the matching SPI loader and WIC have
+already been written, use `run envboot; run tfa_boot`. To exercise the normal
+automatic dispatch explicitly, use `run envboot; run mmc_do_boot`. These are
+U-Boot commands, outside rz-utils; they load BL31 and raw OP-TEE from rootfs
+p2 and do not program SPI-NOR.
+
 ```mermaid
 flowchart LR
   A[SA0 + SPL from SPI-NOR] --> B[U-Boot proper at EL3]
@@ -552,19 +562,9 @@ flowchart LR
 
 #### Hardware evidence and test boundary
 
-The serial evidence is retained in the workspace companion log
-`rz-utils_all/boot/v4h-sparrow-hawk-boot-after-tee.log`.
-
-- U-Boot loaded the expected sizes and CRC32 values, printed `Prepared BL31 @
-  46400000 (20040) and OP-TEE @ 44100000 (65cd0)`, then BL31 v2.14 and
-  `OP-TEE version: 4.10.0-5-g75e17800e`.
-- Linux printed `optee: revision 4.10 (75e17800ed7e660f)` and
-  `optee: initialized driver`; both `/dev/tee0` and `/dev/teepriv0` existed.
-- `test -c /dev/tee0` returned `TEE DRIVER: PASS`.
-
-Acceptance requires more than `/dev/tee0`: `optee.service`,
-`tee-supplicant`, and `xtest` must be present and pass. The current service
-name is `optee.service`, not `optee-supplicant.service`.
+Direct OP-TEE serial evidence, Linux runtime evidence, `tee-supplicant`, and
+`xtest` are U-Boot/Yocto release responsibilities. Keep those records in the
+release ticket and board logs; rz-utils neither runs nor evaluates them.
 
 #### What this tool does and does not automate
 
@@ -572,9 +572,8 @@ name is `optee.service`, not `optee-supplicant.service`.
 operations. The normal post-flash V4H boot becomes direct automatically when
 the flashed loader has the dispatch above and the WIC contains p2 payloads.
 rz-utils does not build that loader or inject payloads into WIC; Yocto owns
-those build outputs. It deliberately has no command to stage TEE in SPI-NOR.
-A future `--test-direct-optee` may verify the generated manifest-driven boot
-and normal-world acceptance after flashing.
+those build outputs. It deliberately has no command to stage, load, run, or
+test V4H TEE in SPI-NOR or at Linux runtime.
 
 ---
 

@@ -98,9 +98,9 @@
         "board_identification": "sparrow-hawk-platform-settings.bin",
         "atf_fdts": "r8a779g3-sparrow-hawk.dtb",
         "uboot_dtb": "r8a779g3-sparrow-hawk.dtb",
-        "flash_writer": "Flash_writer_sparrow_hawk_CR52.mot",
+        "flash_writer": "Flash_Writer_SCIF_sparrow-hawk.mot",
         "ipl_flash_method": "xspi",
-        "rootfs": "core-image-weston.wic",
+        "rootfs": "core-image-minimal.wic",
         "rootfs_flash_method": "udp"
     }
 }
