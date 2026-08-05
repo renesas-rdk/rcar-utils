@@ -264,7 +264,7 @@ class UloadFlashUtil:
 			self.__writeSerialCmd(f'mw.b 0x{padding_address:x} 0xff {write_size - payload_size}')
 			self.__serialRead('=>')
 		print(f'Writing {label} to xSPI offset 0x{offset}...')
-		# RZ/V4H U-Boot sf write silently drops a non-4-byte tail.  The
+		# R-Car V4H U-Boot sf write silently drops a non-4-byte tail.  The
 		# padded byte(s) occupy only the validated gap following this payload.
 		self.__writeSerialCmd(f'sf write {load_address} {offset} 0x{write_size:x}')
 		response = self.__serialRead('=>')

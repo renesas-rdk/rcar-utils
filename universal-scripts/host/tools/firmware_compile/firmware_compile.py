@@ -140,7 +140,7 @@ class FirmwareBuilder:
 		self.bpgen_soc = self.soc
 		self.method = (args.method or self.boards_data[self.board]["ipl_flash_method"] or "xspi").lower()
 		if self.soc == "v4h" and self.method != "xspi":
-			raise ValueError("RZ/V4H supports only the xSPI firmware artifact layout.")
+			raise ValueError("R-Car V4H supports only the xSPI firmware artifact layout.")
 
 		default_bl2   = IMG_DIR / "atf"    / f"bl2-{self.method}-rz-cmn.bin"
 		default_bl31  = IMG_DIR / "atf"    / "bl31-rz-cmn.bin"
@@ -152,7 +152,7 @@ class FirmwareBuilder:
 		self.bl2   = Path(args.bl2)  if args.bl2  else default_bl2
 		if self.soc == "v4h":
 			if args.atf_fdts:
-				raise ValueError("--atf-fdts is not used for RZ/V4H")
+				raise ValueError("--atf-fdts is not used for R-Car V4H")
 			self.atf_fdts = []
 		else:
 			atf_dtb = self.boards_data[self.board].get("atf_fdts")

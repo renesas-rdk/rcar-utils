@@ -102,3 +102,60 @@ Each board has a dedicated section for its specific configuration. The available
 > Entries in `boards_flash_config.toml` are configuration definitions used by the scripts and may also serve as templates for future development.
 > The presence of a board section or a boot media subsection does **not** necessarily mean that flashing for that board/method is currently supported, implemented, or validated.
 > For the list of officially supported boards and IPL flashing methods, refer to [the supported IPL flashing table](../README.md)
+
+## R-Car V4H (Sparrow-Hawk) configuration
+
+Sparrow-Hawk uses the same per-board/per-method table structure as the other boards, but its `xspi` table uses an `SPL` key instead of `BL2` (the bootloader flash scripts pick `SPL` vs `BL2` based on whether the board is V4H), and adds a `PCIE` key with no matching entry on other boards:
+
+```toml
+[sparrow-hawk]
+ethernet = ["e6800000", "e6810000"]
+ethernet_udp_index = "0"
+# V4H uses SA0 (renesas-rcar4-sa0 binman etype), not bpgen — spl_dest here is the
+# SPL_TEXT_BASE the SA0 header points the CR52/ROM loader to, per u-boot-sst .config.
+spl_dest  = "0xEB210000"
+fconf_dtb_base = "0x08130000"
+uboot_load_address = "0x44100000"
+
+# ULoad bootloader from a normal U-Boot console.
+load_address = "0x48000000"
+
+[sparrow-hawk.uload]
+verify_address = "0x49000000"
+SPL = "00000"
+UBOOT_FIT = "80000"
+BID = "2C0000"
+PCIE = "300000"
+erase_size = "310000"
+spl_max_size = "80000"
+uboot_fit_max_size = "240000"
+bid_size = "810"
+pcie_max_size = "10000"
+
+# Bootloader flash SPI
+# UBOOT_FIT is generated from U-Boot nodtb and this board's U-Boot DTB.
+[sparrow-hawk.xspi]
+SPL = ["EB210000", "00000"]
+UBOOT_FIT = ["00000", "80000"]
+PCIE = ["300000"]
+BID = ["00810", "2C0000"]
+```
+
+Key differences from the `[<board_name>.xspi]` template above:
+- **`SPL`** replaces `BL2` — same `[srec_top_address/VMA, flash_address]` shape, but the value at index 0 (`EB210000`) is `spl_dest` (the SPL's link-time text base, i.e. where the CR52/ROM loader expects it in RAM), not a QSPI offset.
+- **`UBOOT_FIT`** replaces `FIP` because V4H flashes a board-specific U-Boot
+  FIT, not a TF-A Firmware Image Package.
+- **`PCIE`** — a single flash offset (no VMA) for the required Sparrow-Hawk PCIe PHY firmware blob (`rcar_gen4_pcie.bin`).
+- **`BID` offset (`0x2C0000`)** is different from the `0x5F300` used by the V2H boards.
+- **`[sparrow-hawk.uload]`** is the independent U-Boot-console layout. It
+  targets the SD card's FAT32 partition 1, resolved at runtime via U-Boot's
+  `${mmcdev}:${mmcpart}` (not a fixed MMC device number). `load_address` and
+  `verify_address` are non-overlapping RAM buffers; the four offsets match the
+  xSPI table; and the size limits prevent an aligned write from crossing into
+  the next region.
+
+> [!WARNING]
+> Sparrow-Hawk has no eMMC or eSD boot path. Only `[sparrow-hawk.xspi]` and
+> `[sparrow-hawk.uload]` are defined and have been validated on real hardware.
+
+See [R-Car V4H (Sparrow-Hawk) flashing flow](../README.md#r-car-v4h-sparrow-hawk-flashing-flow) in the main README for how these offsets are used during flashing, and for a full comparison with the legacy BL2/FIP flow.

@@ -66,22 +66,25 @@ This will:
 | Option              | Default          | Description                                                                           |
 | ------------------- | ---------------- | ------------------------------------------------------------------------------------- |
 | `--board`           | `rzg2l-sbc`      | Target board name (must exist in `boards_flash_config.toml` and `flash_images.json`). |
-| `--soc`             | `g2l`            | Target SoC family (g2l, v2l, v2h).                                                    |
+| `--soc`             | `g2l`            | Target SoC family (`g2l`, `v2l`, `v2h`, `v4h`).                                       |
 | `--method`          | `xspi`           | Flash method (`xspi`, `emmc`, or `esd`).                                              |
-| `--bl2`             | auto from images | Path to BL2 binary (override default).                                                |
-| `--atf-fdts`        | auto from JSON   | ATF FDT(s) to append to BL2.                                                          |
+| `--bl2`             | auto from images | Path to BL2 binary (override default). Not used when `--soc v4h`.                     |
+| `--atf-fdts`        | auto from JSON   | *(Legacy boards only)* ATF FDT(s) to append to BL2; rejected for V4H.                 |
 | `--uboot-dtbs`      | auto from JSON   | U-Boot DTB(s) to append to U-Boot nodtb.                                              |
 | `--bl31`            | auto from images | Path to BL31 binary (override default).                                               |
 | `--u-boot-nodtb`    | auto from images | Path to U-Boot (nodtb) binary (override default).                                     |
-| `--out-dir`         | `out`            | Output directory for generated files.                                                 |
+| `--spl`             | auto from images | *(V4H only)* Path to `target/images/u-boot/sa0.bin` (SA0 header + SPL). `--sa0-bin` is kept as a compatibility alias. |
+| `--out-dir`         | `target/images`  | Output directory for generated files.                                                 |
 | `--bootparameter`   | auto search      | Path to `bpgen` tool (override search path).                                          |
 | `--fiptool`         | auto search      | Path to `fiptool` tool (override search path).                                        |
+| `--mkimage`         | auto search      | *(V4H only)* Path to U-Boot `mkimage`.                                                |
 | `--objcopy`         | auto search      | Path to `objcopy` tool (override search path).                                        |
 | `--fip-align`       | `16`             | FIP alignment.                                                                        |
 | `--fip-vma`         | from TOML        | Override VMA for FIP `.srec`.                                                         |
+| `--uboot-fit-vma`   | from TOML        | *(V4H only)* Override VMA for U-Boot FIT `.srec`.                                     |
 | `--bl2-bp-vma`      | from TOML        | Override VMA for BL2+BP `.srec`.                                                      |
+| `--spl-bp-vma`      | from TOML        | *(V4H only)* Override VMA for SPL BP `.srec`.                                         |
 | `--fip-tb-kind`     | `soc`            | FIP firmware kind: `soc` or `tb`.                                                     |
-| `--skip-bl2-output` | *(flag)*         | Skip BL2 + DTB step.                                                                  |
 
 ---
 
@@ -97,8 +100,40 @@ This will:
 | `fip_<board>.bin`        | Firmware Image Package binary                         |
 | `fip_<board>.srec`       | FIP in Motorola S-record format (with correct VMA)    |
 
+## R-Car V4H (Sparrow-Hawk) build pipeline
+
+For `--soc v4h`, the script takes a different path (`run_all_v4h()`) instead
+of the BL2/bpgen/fiptool pipeline:
+
+1. `step_sa0_and_srec()` — copies the pre-built `sa0.bin` (SA0 header + SPL) to `spl_bp_<board>.bin`, then emits `spl_bp_<board>.srec` with the VMA from TOML (`spl_dest`) or `--spl-bp-vma`.
+2. `step_uboot_fit_and_srec()` — runs `mkimage` with Yocto's
+   `u-boot-nodtb-rz-cmn.bin` and the selected `uboot_dtb`, producing
+   `u-boot_<board>.itb` and `u-boot_<board>.srec`.
+
+No `bpgen`/`fiptool` invocation happens for V4H. `--spl` (or compatibility
+alias `--sa0-bin`), `--u-boot-nodtb`, and `--uboot-dtbs` override the inputs.
+Without overrides, the script reads the corresponding files under
+`target/images/u-boot/`. `universal_flash.py` passes those inputs explicitly.
+
+> [!IMPORTANT]
+> Unlike the legacy pipeline, **`run_all_v4h()` has no `--tos-fw` step**. It
+> builds only the SPI loader inputs (SA0+SPL and the U-Boot-only FIT). Do not embed
+> BL31/OP-TEE in that FIT: SPL only copies loadables and cannot construct the
+> EL3 handoff. V4H OP-TEE is supplied by the Yocto WIC as separate `/boot`
+> files and is loaded with the direct `ext4load`, `tfa_prepare`, and
+> `mmc_do_boot` sequence documented in the host tools README.
+
+| File Name                | Description                                              |
+| ------------------------ | ---------------------------------------------------------|
+| `spl_bp_<board>.bin`     | Copy of the pre-built SA0 header + SPL blob (`sa0.bin`)   |
+| `spl_bp_<board>.srec`    | SPL BP in Motorola S-record format (with correct VMA)     |
+| `u-boot_<board>.itb`     | U-Boot nodtb plus the selected board's U-Boot DTB          |
+| `u-boot_<board>.srec`    | U-Boot FIT in Motorola S-record format                      |
+
 ## Notes
 
 - VMAs are pulled from boards_flash_config.toml per board and flash method.
 - ATF DTB and U-Boot DTB names are taken from flash_images.json.
-- All tools are prebuilt in tools/bin/<os> or host/tools/bin/<os> unless overridden.
+- Legacy tools are prebuilt in the tools directories. V4H additionally needs
+  U-Boot `mkimage` in `PATH` or supplied with `--mkimage`.
+- For `--soc v4h`, see [R-Car V4H (Sparrow-Hawk) build pipeline](#r-car-v4h-sparrow-hawk-build-pipeline) above — the BL2/bpgen/fiptool notes elsewhere in this document do not apply.
