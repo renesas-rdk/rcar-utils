@@ -89,5 +89,17 @@
         "ipl_flash_method": "xspi",
         "rootfs": "core-image-minimal.wic",
         "rootfs_flash_method": "otg"
+    },
+    "sparrow-hawk": {
+        "soc": "v4h",
+        "spl": "spl_bp_sparrow-hawk.bin",
+        "uboot_fit": "u-boot_sparrow-hawk.itb",
+        "pcie_fw": "rcar_gen4_pcie.bin",
+        "board_identification": "sparrow-hawk-platform-settings.bin",
+        "uboot_dtb": "sparrow-hawk.dtb",
+        "flash_writer": "Flash_Writer_SCIF_sparrow-hawk.mot",
+        "ipl_flash_method": "xspi",
+        "rootfs": "core-image-minimal.wic",
+        "rootfs_flash_method": "udp"
     }
 }

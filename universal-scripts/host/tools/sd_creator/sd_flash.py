@@ -10,7 +10,6 @@ import glob
 from subprocess import Popen, PIPE, CalledProcessError
 import platform
 from serial.tools.list_ports import comports
-import json
 import sys
 if sys.version_info >= (3, 11):  # pragma: Python version >=3.11
     import tomllib
@@ -389,6 +388,10 @@ class SdFlashUtil:
 		# Run fastboot commands only once (no retry)
 		self.__runSubprocessCommand(f"{fastboot_command} getvar version-bootloader")
 		self.__runSubprocessCommand(f"{fastboot_command} getvar version")
+		# `rawimg` is the standard target for every board, including
+		# Sparrow-Hawk. The matching U-Boot rawimg backend resolves the target
+		# from the runtime `mmcdev` environment variable and falls back to
+		# CONFIG_FASTBOOT_FLASH_MMC_DEV only when `mmcdev` is unset.
 		self.__runSubprocessCommand(f"{fastboot_command} flash rawimg {self.__args.rootfsImage}")
 
 	def __handle_otg_fastboot(self):

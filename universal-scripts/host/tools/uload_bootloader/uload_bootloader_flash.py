@@ -6,6 +6,7 @@ import argparse
 import time
 import os
 import glob
+import re
 from serial.tools.list_ports import comports
 import sys
 if sys.version_info >= (3, 11):  # pragma: Python version >=3.11
@@ -34,10 +35,13 @@ class UloadFlashUtil:
 		self.__setupArgumentParser(args)
 		self.__setupSerialPort()
 
+	def __is_v4h(self):
+		return self.__args.boardName == "sparrow-hawk"
+
 	def __setupArgumentParser(self, args):
 		self.__parser = argparse.ArgumentParser(
 			description='Util to flash bootloader from U-Boot console on RZ Board.\n'
-						'NOTE: Images must be on SD card partition 1 (FAT32), i.e. mmc 0:1.\n',
+						'NOTE: Images must be on the SD card FAT32 partition 1.\n',
 			epilog='Example:\n  ./uload_bootloader_flash.py --board_name rzg2l-sbc'
 		)
 		# Board name
@@ -71,16 +75,31 @@ class UloadFlashUtil:
 									type=str,
 									help='Path/filename of BL2 image on SD (e.g., "uload-bootloader/bl2_bp_rzg2l-sbc.bin" '
 									'or just "bl2_bp_rzg2l-sbc.bin").')
+		self.__parser.add_argument('--spl_path',
+									dest='splPath',
+									default=None,
+									type=str,
+									help='V4H only: path/filename of the SA0+SPL image on SD.')
 		self.__parser.add_argument('--fip_path',
 									dest='fipPath',
 									default=None,
 									type=str,
 									help='Path/filename of FIP image on SD.')
+		self.__parser.add_argument('--uboot_fit_path',
+									dest='ubootFitPath',
+									default=None,
+									type=str,
+									help='V4H only: path/filename of the board-specific U-Boot FIT on SD.')
 		self.__parser.add_argument('--image_bid',
 									dest='bidPath',
 									default=None,
 									type=str,
 									help='Path/filename of board-ID/platform-settings binary on SD.')
+		self.__parser.add_argument('--pcie_fw_path',
+									dest='pcieFwPath',
+									default=None,
+									type=str,
+									help='V4H only: path/filename of PCIe firmware on SD.')
 
 		if args:
 			self.__args = self.__parser.parse_args(args)
@@ -177,6 +196,8 @@ class UloadFlashUtil:
 			self.__uloadFlashInfo = flash_info[self.__args.boardName]
 		except KeyError:
 			die(msg=f'Board name "{self.__args.boardName}" is not supported.')
+		if self.__is_v4h() and "uload" not in self.__uloadFlashInfo:
+			die(msg='Sparrow-Hawk ULoad xSPI layout is not configured.')
 
 	@staticmethod
 	def __resolve_media_path(name_or_path: str) -> str:
@@ -188,10 +209,160 @@ class UloadFlashUtil:
 			return name_or_path.replace('\\', '/')
 		return f"{DEFAULT_MEDIA_DIR}/{name_or_path}"
 
+	def __v4h_fatload(self, load_address, path, label, size_var=None):
+		"""Load one V4H artifact from the SD card's FAT32 boot partition."""
+		print(f'Loading {label} from mmc ${{mmcdev}}:${{mmcpart}}: {path}')
+		self.__writeSerialCmd(f'fatload mmc ${{mmcdev}}:${{mmcpart}} {load_address} {path}')
+		response = self.__serialRead('=>')
+		match = re.search(r'(\d+) bytes read', response)
+		if not match:
+			die(msg=f'Unable to load V4H {label} from mmc ${{mmcdev}}:${{mmcpart}}: {path}')
+		if size_var:
+			self.__writeSerialCmd(f'setenv {size_var} ${{filesize}}')
+			self.__serialRead('=>')
+		return int(match.group(1))
+
+	@staticmethod
+	def __v4h_require(response, expected, action):
+		if expected not in response:
+			die(msg=f'V4H {action} failed; expected "{expected}" in U-Boot response.')
+
+	def __v4h_crc32(self, address, size, label):
+		self.__writeSerialCmd(f'crc32 {address} 0x{size:x}')
+		# Do not wait for plain '=>': it occurs inside U-Boot's CRC output
+		# ('==> <crc>').  The line break identifies the actual shell prompt.
+		response = self.__serialRead('\n=>')
+		match = re.search(r'==>\s*([0-9a-fA-F]{8})', response)
+		if not match:
+			die(msg=f'Unable to calculate V4H {label} CRC32.')
+		return match.group(1).lower()
+
+	def __wait_for_v4h_uboot_prompt(self):
+		"""Accept an already-running U-Boot for recovery, otherwise wait for reboot."""
+		self.__writeSerialCmd('')
+		prompt_deadline = time.time() + 2
+		while time.time() < prompt_deadline:
+			if self.__serialPort.in_waiting > 0:
+				response = self.__serialPort.read(self.__serialPort.in_waiting).decode(errors='ignore')
+				print(response, end='', flush=True)
+				if '=>' in response:
+					return True
+			time.sleep(0.1)
+		return self.__serialReadWithReconnect(
+			'Hit any key to stop autoboot:', allow_uboot_prompt=True)
+
+	def __write_v4h_xspi_file(self, load_address, verify_address, path, offset,
+							label, max_size):
+		payload_size = self.__v4h_fatload(load_address, path, label)
+		write_size = (payload_size + 3) & ~3
+		if write_size > max_size:
+			die(msg=f'V4H {label} aligned size 0x{write_size:x} exceeds its xSPI region.')
+		source_crc = self.__v4h_crc32(load_address, payload_size, label)
+		if write_size != payload_size:
+			print(f'Padding {label} write from 0x{payload_size:x} to 0x{write_size:x} bytes.')
+			padding_address = int(load_address, 0) + payload_size
+			self.__writeSerialCmd(f'mw.b 0x{padding_address:x} 0xff {write_size - payload_size}')
+			self.__serialRead('=>')
+		print(f'Writing {label} to xSPI offset 0x{offset}...')
+		# RZ/V4H U-Boot sf write silently drops a non-4-byte tail.  The
+		# padded byte(s) occupy only the validated gap following this payload.
+		self.__writeSerialCmd(f'sf write {load_address} {offset} 0x{write_size:x}')
+		response = self.__serialRead('=>')
+		self.__v4h_require(response, 'Written: OK', f'{label} write')
+
+		self.__writeSerialCmd(f'sf read {verify_address} {offset} 0x{payload_size:x}')
+		response = self.__serialRead('=>')
+		self.__v4h_require(response, 'Read: OK', f'{label} readback')
+		readback_crc = self.__v4h_crc32(verify_address, payload_size, f'{label} readback')
+		if source_crc != readback_crc:
+			die(msg=(f'V4H {label} CRC mismatch after write: '
+					 f'source={source_crc}, SPI={readback_crc}.'))
+		print(f'Verified {label} CRC32: {source_crc}')
+
+	def __write_v4h_uload_bootloader(self):
+		"""Program the V4H SPL/FIT/BID/PCIe layout from U-Boot's FAT partition."""
+		layout = self.__uloadFlashInfo['uload']
+		load_address = self.__uloadFlashInfo['load_address']
+		verify_address = layout['verify_address']
+
+		spl_path = self.__resolve_media_path(
+			self.__args.splPath or f'spl_bp_{self.__args.boardName}.bin')
+		uboot_fit_path = self.__resolve_media_path(
+			self.__args.ubootFitPath or self.__args.fipPath
+			or f'u-boot_{self.__args.boardName}.itb')
+		bid_path = self.__resolve_media_path(
+			self.__args.bidPath or f'{self.__args.boardName}-platform-settings.bin')
+		pcie_path = self.__resolve_media_path(
+			self.__args.pcieFwPath or 'rcar_gen4_pcie.bin')
+
+		artifacts = [
+			('SPL (SA0+SPL)', spl_path, 'uload_spl_size', 'SPL'),
+			('U-Boot FIT', uboot_fit_path, 'uload_uboot_fit_size', 'UBOOT_FIT'),
+			('BID', bid_path, 'uload_bid_size', 'BID'),
+			('PCIe firmware', pcie_path, 'uload_pcie_size', 'PCIE'),
+		]
+
+		print("V4H image sources on the SD card's FAT32 partition 1:")
+		for label, path, _, _ in artifacts:
+			print(f'  {label}: {path}')
+
+		print('\nPlease power off the board, select normal boot mode, then power it on.')
+		print('An existing U-Boot prompt can also be used for recovery.')
+		if not self.__wait_for_v4h_uboot_prompt():
+			die(msg='Failed to communicate with V4H U-Boot after reconnection attempts.')
+		self.__writeSerialCmd('')
+		self.__serialRead('=>')
+		self.__writeSerialCmd('sf probe')
+		response = self.__serialRead('=>')
+		self.__v4h_require(response, 'Detected', 'SPI probe')
+
+		# Load every file before erasing SPI.  The size test uses a 0x prefix
+		# because U-Boot stores ${filesize} as an unprefixed hexadecimal string.
+		print('\nPre-checking V4H artifacts before erase...')
+		for label, path, size_var, offset_key in artifacts:
+			payload_size = self.__v4h_fatload(load_address, path, label, size_var)
+			max_size = int(layout['bid_size'] if offset_key == 'BID'
+						   else layout[f'{offset_key.lower()}_max_size'], 16)
+			if payload_size <= 0 or ((payload_size + 3) & ~3) > max_size:
+				die(msg=f'V4H {label} does not fit its xSPI region after 4-byte alignment.')
+
+		check_cmd = (
+			'if test 0x${uload_spl_size} -gt 0 && '
+			f'test 0x${{uload_spl_size}} -le 0x{layout["spl_max_size"]} && '
+			'test 0x${uload_uboot_fit_size} -gt 0 && '
+			f'test 0x${{uload_uboot_fit_size}} -le 0x{layout["uboot_fit_max_size"]} && '
+			f'test 0x${{uload_bid_size}} -eq 0x{layout["bid_size"]} && '
+			'test 0x${uload_pcie_size} -gt 0 && '
+			f'test 0x${{uload_pcie_size}} -le 0x{layout["pcie_max_size"]}; '
+			'then echo V4H_ULOAD_PRECHECK_OK; else echo V4H_ULOAD_PRECHECK_FAIL; fi'
+		)
+		self.__writeSerialCmd(check_cmd)
+		response = self.__serialRead('=>')
+		if 'V4H_ULOAD_PRECHECK_OK' not in response:
+			die(msg='V4H ULoad size pre-check failed; SPI flash was not erased.')
+
+		print('Erasing V4H xSPI region...')
+		self.__writeSerialCmd(f'sf erase 0 {layout["erase_size"]}')
+		response = self.__serialRead('=>')
+		self.__v4h_require(response, 'Erased: OK', 'xSPI erase')
+
+		for label, path, _, offset_key in artifacts:
+			max_size = int(layout['bid_size'] if offset_key == 'BID'
+						   else layout[f'{offset_key.lower()}_max_size'], 16)
+			self.__write_v4h_xspi_file(
+				load_address, verify_address, path, layout[offset_key], label, max_size)
+
+		print('\nV4H ULoad bootloader flashing completed successfully.')
+		self.__serialPort.close()
+
 	def writeUloadBootloader(self):
 		start_time = time.time()
 
 		self.__getUloadFlashInfo()
+		if self.__is_v4h():
+			self.__write_v4h_uload_bootloader()
+			print(f"Total elapsed time: {time.time() - start_time:.3f} s")
+			return
 		xspiFlashAddress = self.__uloadFlashInfo["flash_address"]
 		loadAddress = self.__uloadFlashInfo["load_address"]
 
@@ -204,7 +375,7 @@ class UloadFlashUtil:
 		fip_path = self.__resolve_media_path(self.__args.fipPath or default_fip_name)
 		bid_path = self.__resolve_media_path(self.__args.bidPath or default_bid_name)
 
-		print("Image sources on SD (mmc 0:1):")
+		print("Image sources on the SD card's FAT32 partition 1:")
 		print(f"  BL2 : {bl2_path}")
 		print(f"  FIP : {fip_path}")
 		print(f"  BID : {bid_path}")
@@ -459,7 +630,9 @@ class UloadFlashUtil:
 		if not buf:
 			print("Returned value is not the expectation. Exiting.")
 			exit()
-		print(buf.decode(errors="ignore"))
+		decoded = buf.decode(errors="ignore")
+		print(decoded)
+		return decoded
 
 # Util function to die with error
 def die(msg='', code=1):

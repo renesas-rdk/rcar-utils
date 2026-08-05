@@ -4,6 +4,7 @@
 import serial
 import argparse
 import platform
+import re
 import shutil
 import subprocess
 import time
@@ -28,6 +29,7 @@ BUFFER_CLEAR_WAIT = 0.5
 BUFFER_CHECK_WAIT = 0.3
 MAX_RECONNECT_RETRIES = 3
 SERIAL_BY_ID_DIR = "/dev/serial/by-id"
+V4H_XSPI_END = 0x310000
 
 class BootloaderFlashUtil:
 	def __init__(self, args=[]):
@@ -44,7 +46,75 @@ class BootloaderFlashUtil:
 		self.__initialConnection = True
 
 		self.__setupArgumentParser(args)
+		if self.__is_v4h() and self.__args.flashMethod != "xspi":
+			die(msg="Sparrow-Hawk supports only xSPI bootloader flashing.")
 		self.__getFlashAddress()
+
+	def __is_v4h(self):
+		return self.__args.boardName == "sparrow-hawk"
+
+	def __ipl_label(self):
+		return "SPL" if self.__is_v4h() else "BL2"
+
+	def __ipl_config_key(self, flash_config):
+		key = "SPL" if self.__is_v4h() else "BL2"
+		if key not in flash_config:
+			die(msg=f'{key} flash address is not configured for board {self.__args.boardName}.')
+		return key
+
+	def __ipl_image(self):
+		if self.__is_v4h():
+			if not self.__args.splImage:
+				die(msg='--image_spl must be provided for V4H boards.')
+			return self.__args.splImage
+		return self.__args.bl2Image
+
+	def __uboot_image(self):
+		if self.__is_v4h():
+			if not self.__args.ubootFitImage:
+				die(msg='--image_uboot_fit must be provided for V4H boards.')
+			return self.__args.ubootFitImage
+		return self.__args.fipImage
+
+	def __validate_v4h_xspi_layout(self, flash_address):
+		"""Reject V4H SPI payloads that would overlap a following region."""
+		if not self.__is_v4h() or self.__args.flashMethod != "xspi":
+			return
+
+		try:
+			spans = [
+				("SPL", self.__ipl_image(), int(flash_address["SPL"][1], 16)),
+				("U-Boot FIT", self.__uboot_image(),
+				 int(flash_address["UBOOT_FIT"][1], 16)),
+				("BID", self.__args.bidImage, int(flash_address["BID"][1], 16)),
+			]
+			if self.__args.pcieFwImage:
+				spans.append(("PCIe firmware", self.__args.pcieFwImage,
+							  int(flash_address["PCIE"][0], 16)))
+		except (KeyError, IndexError, ValueError) as exc:
+			die(msg=f"Invalid V4H xSPI layout configuration: {exc}")
+
+		bid_expected_size = int(flash_address["BID"][0], 16)
+		bid_actual_size = os.path.getsize(self.__args.bidImage)
+		if bid_actual_size != bid_expected_size:
+			die(msg=("V4H BID size does not match boards_flash_config.toml: "
+				 f"expected 0x{bid_expected_size:X}, got 0x{bid_actual_size:X}"))
+
+		spans.sort(key=lambda item: item[2])
+		for index, (label, path, start) in enumerate(spans):
+			end = start + os.path.getsize(path)
+			if index + 1 < len(spans):
+				next_label, _, next_start = spans[index + 1]
+				if end > next_start:
+					die(msg=(f"V4H xSPI overlap: {label} [0x{start:X}, 0x{end:X}) "
+						 f"overwrites {next_label} at 0x{next_start:X}"))
+			elif end > V4H_XSPI_END:
+				# The last span (by offset) has no following image to bound
+				# it, so it must be checked against the fixed xSPI region
+				# end instead.
+				die(msg=(f"V4H xSPI overflow: {label} [0x{start:X}, 0x{end:X}) "
+					 f"exceeds the xSPI region end at 0x{V4H_XSPI_END:X}"))
+			print(f"V4H xSPI layout: {label} [0x{start:X}, 0x{end:X})")
 
 	# Setup CLI parser
 	def __setupArgumentParser(self, args=[]):
@@ -98,6 +168,12 @@ class BootloaderFlashUtil:
 									action='store',
 									type=str,
 									help='Path to bl2 image (defaults to: <path/to/your/package>/target/images/bl2_bp_rzg2l-sbc.srec).')
+		self.__parser.add_argument('--image_spl',
+									default=None,
+									dest='splImage',
+									action='store',
+									type=str,
+									help='Path to SPL image for V4H boards (SA0 header + SPL binary).')
 		self.__parser.add_argument('--image_bl2_esd',
 									default=f'{self.__imagesDir}/bl2_bp_esd_rzg2l-sbc.bin',
 									dest='bl2EsdImage',
@@ -110,12 +186,24 @@ class BootloaderFlashUtil:
 									action='store',
 									type=str,
 									help='Path to FIP image (defaults to: <path/to/your/package>/target/images/fip_rzg2l-sbc.srec).')
+		self.__parser.add_argument('--image_uboot_fit',
+									default=None,
+									dest='ubootFitImage',
+									action='store',
+									type=str,
+									help='V4H only: path to the board-specific U-Boot FIT image.')
 		self.__parser.add_argument('--image_bid',
 									default=f'{self.__imagesDir}/rzg2l-sbc-platform-settings.bin',
 									dest='bidImage',
 									action='store',
 									type=str,
 									help='Path to board identification image (defaults to: <path/to/your/package>/target/images/rzg2l-sbc-platform-settings.bin).')
+		self.__parser.add_argument('--image_pcie_fw',
+									default=None,
+									dest='pcieFwImage',
+									action='store',
+									type=str,
+									help='Path to PCIe PHY firmware (rcar_gen4_pcie.bin) for V4H boards.')
 		self.__parser.add_argument('--esd_device',
 									dest='esdDevice',
 									action='store',
@@ -213,6 +301,69 @@ class BootloaderFlashUtil:
 
 		print(f'{buffer.decode(errors="ignore")}')
 
+	def __wait_for_v4h_xls3_ack(self, expected_offset, expected_size, timeout=30):
+		"""Wait for one V4H XLS3 chunk's Flash Writer response and validate it.
+
+		Unlike __wait_for_prompt(), which only waits for '>' and accepts
+		whatever preceded it, this requires 'complete!' and cross-checks the
+		reported SpiFlashMemory Stat/End Address against the offset and size
+		that were actually requested for this chunk. A prompt with no
+		'complete!' (e.g. a write/erase error reported before the prompt)
+		or a reported range that does not match the request is treated as a
+		failure instead of silently continuing.
+		"""
+		end_time = time.time() + timeout
+		buffer = b""
+		sent_y = False
+
+		while time.time() < end_time:
+			if self.__serialPort.in_waiting:
+				buffer += self.__serialPort.read(self.__serialPort.in_waiting)
+				decoded = buffer.decode(errors='ignore')
+
+				if not sent_y and "Clear OK" in decoded:
+					self.__writeSerialCmd('y')
+					sent_y = True
+
+				if ">" in decoded:
+					if "complete!" not in decoded:
+						die(msg=(
+							"V4H XLS3 write did not report 'complete!' before "
+							f"the prompt (offset 0x{expected_offset:X}, "
+							f"size 0x{expected_size:X}).\n{decoded}"
+						))
+
+					match = re.search(
+						r"SpiFlashMemory Stat Address\s*:\s*H'([0-9A-Fa-f]+)\s*"
+						r"SpiFlashMemory End Address\s*:\s*H'([0-9A-Fa-f]+)",
+						decoded)
+					if not match:
+						die(msg=(
+							"V4H XLS3 write reported 'complete!' but the "
+							"SpiFlashMemory Stat/End Address could not be "
+							f"parsed (offset 0x{expected_offset:X}, "
+							f"size 0x{expected_size:X}).\n{decoded}"
+						))
+
+					reported_start = int(match.group(1), 16)
+					reported_end = int(match.group(2), 16)
+					expected_end = expected_offset + expected_size - 1
+					if reported_start != expected_offset or reported_end != expected_end:
+						die(msg=(
+							"V4H XLS3 write address mismatch: requested "
+							f"0x{expected_offset:X}-0x{expected_end:X}, "
+							f"Flash Writer reported "
+							f"0x{reported_start:X}-0x{reported_end:X}."
+						))
+					return
+
+			time.sleep(0.1)
+
+		die(msg=(
+			f"V4H XLS3 write timed out waiting for the Flash Writer prompt "
+			f"(offset 0x{expected_offset:X}, size 0x{expected_size:X})."
+		))
+
 	# Function to write bootloader
 	def writeBootloader(self):
 		start_time = time.time()
@@ -221,15 +372,21 @@ class BootloaderFlashUtil:
 		if not os.path.exists(self.__args.flashWriterImage):
 			print(f"The file {self.__args.flashWriterImage} does not exist.")
 			exit()
-		if not os.path.exists(self.__args.bl2Image):
-			print(f"The file {self.__args.bl2Image} does not exist.")
+		ipl_image = self.__ipl_image()
+		if not os.path.exists(ipl_image):
+			print(f"The file {ipl_image} does not exist.")
 			exit()
-		if not os.path.exists(self.__args.fipImage):
-			print(f"The file {self.__args.fipImage} does not exist.")
+		uboot_image = self.__uboot_image()
+		if not os.path.exists(uboot_image):
+			print(f"The file {uboot_image} does not exist.")
+			exit()
+		if self.__args.pcieFwImage and not os.path.exists(self.__args.pcieFwImage):
+			print(f"The file {self.__args.pcieFwImage} does not exist.")
 			exit()
 		if not os.path.exists(self.__args.bidImage):
 			print(f"The file {self.__args.bidImage} does not exist.")
 			exit()
+		self.__validate_v4h_xspi_layout(self.__flashAddress.get("xspi", {}))
 
 		# Wait for device to be ready to receive image.
 		print("\nPlease power off the board, set the DIP switches to SCIF download mode, and then power the board back on." \
@@ -241,7 +398,9 @@ class BootloaderFlashUtil:
 		# TODO: Each board has the different responses.
 		# We need to list out all the supported responses corresponding to the supported boards.
 		# Try to read from serial with reconnection support
-		if (self.__args.boardName == "rzv2h-evk" or self.__args.boardName == "imdt-v2h-sbc"):
+		if (self.__args.boardName == "sparrow-hawk"):
+			ok = self.__serialReadWithReconnect('Load Program to RT-SRAM', allow_uboot_prompt=True)
+		elif (self.__args.boardName == "rzv2h-evk" or self.__args.boardName == "imdt-v2h-sbc"):
 			ok = self.__serialReadWithReconnect('Load Program to SRAM', allow_uboot_prompt=True)
 		elif (self.__args.boardName == "rzv2h-rdk"):
 			ok = self.__serialReadNoResponseWithReconnect()
@@ -268,7 +427,7 @@ class BootloaderFlashUtil:
 		# emmc flash
 		if (self.__args.flashMethod == "emmc"):
 			self.__handle_emmc_flash(self.__flashAddress["emmc"])
-		# xspi flasj
+		# xspi flash
 		elif (self.__args.flashMethod == "xspi"):
 			self.__handle_xspi_flash(self.__flashAddress["xspi"])
 
@@ -294,23 +453,25 @@ class BootloaderFlashUtil:
 		self.__writeSerialCmd('')
 		self.__serialRead('>')
 
-		# Write BL2
-		BL2FlashAddress = flashAddress["BL2"]
+		# Write BL2/SPL
+		ipl_label = self.__ipl_label()
+		ipl_image = self.__ipl_image()
+		ipl_flash_address = flashAddress[self.__ipl_config_key(flashAddress)]
 		self.__writeSerialCmd('EM_W')
 		self.__serialRead('Select area')
-		self.__writeSerialCmd(BL2FlashAddress[0])
+		self.__writeSerialCmd(ipl_flash_address[0])
 
 		self.__serialRead('Please Input Start Address in sector')
-		self.__writeSerialCmd(BL2FlashAddress[1])
+		self.__writeSerialCmd(ipl_flash_address[1])
 
 		self.__serialRead('Please Input Program Start Address')
-		self.__writeSerialCmd(BL2FlashAddress[2])
+		self.__writeSerialCmd(ipl_flash_address[2])
 		self.__serialRead('please send !')
 
-		print("Writing BL2...")
-		self.__writeFileToSerial(self.__args.bl2Image)
+		print(f"Writing {ipl_label}...")
+		self.__writeFileToSerial(ipl_image)
 		self.__serialRead('>')
-		print("BL2 write complete.\n")
+		print(f"{ipl_label} write complete.\n")
 
 		# Write FIP
 		FIPFlashAddress = flashAddress["FIP"]
@@ -364,7 +525,10 @@ class BootloaderFlashUtil:
 		print("Board identification write completed.\n")
 
 	def __handle_xspi_flash(self, flashAddress):
-		if not (self.__args.boardName == "rzv2h-evk") and not (self.__args.boardName == "rzv2h-rdk"):
+		is_v4h = (self.__args.boardName == "sparrow-hawk")
+
+		# XCS erase: skip for rzv2h-evk, rzv2h-rdk, and sparrow-hawk
+		if not (self.__args.boardName == "rzv2h-evk") and not (self.__args.boardName == "rzv2h-rdk") and not (self.__args.boardName == "sparrow-hawk"):
 			print("\n" + "="*SEPARATOR_WIDTH)
 			print("** ERASING QSPI FLASH MEMORY **")
 			print("="*SEPARATOR_WIDTH)
@@ -381,50 +545,71 @@ class BootloaderFlashUtil:
 			print("="*SEPARATOR_WIDTH + "\n")
 
 		# Changing speed to 921600 bps.
-		self.__writeSerialCmd('SUP')
-		self.__serialRead('the terminal.')
+		# NOTE: sparrow-hawk Flash Writer runs at 921600 from power-on,
+		# the SUP command is not supported (returns "command not found"),
+		# so skip it entirely.
+		if not is_v4h:
+			self.__writeSerialCmd('SUP')
+			self.__serialRead('the terminal.')
+			self.__setupSerialPort_SUP()
+			time.sleep(1)
+			self.__writeSerialCmd('')
+			self.__serialRead('>')
 
-		self.__setupSerialPort_SUP()
-		time.sleep(1)
-		self.__writeSerialCmd('')
-		self.__serialRead('>')
+		if is_v4h:
+			# V4H: Flash Writer Rev.77.9.4 XLS2 has unreliable SREC→SPI
+			# address mapping; use XLS3 (binary mode, 128KB chunks)
+			# which matches the reference ipl_burning.py behaviour.
+			# The FW already runs at 921600, no SUP needed.
+			self.__write_binary_chunked_xls3(
+				"SPL (SA0+SPL)", self.__ipl_image(), int(flashAddress[self.__ipl_config_key(flashAddress)][1], 16))
+			self.__write_binary_chunked_xls3(
+				"U-Boot FIT", self.__uboot_image(),
+				int(flashAddress["UBOOT_FIT"][1], 16))
+		else:
+			# Write BL2
+			BL2FlashAddress = flashAddress["BL2"]
+			self.__writeSerialCmd('XLS2')
+			self.__serialRead('Please Input : H')
+			self.__writeSerialCmd(BL2FlashAddress[0])
 
-		# Write BL2
-		BL2FlashAddress = flashAddress["BL2"]
-		self.__writeSerialCmd('XLS2')
-		self.__serialRead('Please Input : H')
-		self.__writeSerialCmd(BL2FlashAddress[0])
+			self.__serialRead('Please Input : H')
+			self.__writeSerialCmd(BL2FlashAddress[1])
+			self.__serialRead('please send !')
 
-		self.__serialRead('Please Input : H')
-		self.__writeSerialCmd(BL2FlashAddress[1])
-		self.__serialRead('please send !')
+			print("Writing BL2...")
+			self.__writeFileToSerial(self.__args.bl2Image)
+			self.__serialRead('>')
+			print("BL2 write complete.\n")
 
-		print("Writing BL2...")
-		self.__writeFileToSerial(self.__args.bl2Image)
-		self.__serialRead('>')
-		print("BL2 write completed.\n")
+			# Write FIP
+			FIPFlashAddress = flashAddress["FIP"]
+			self.__writeSerialCmd('XLS2')
+			self.__serialRead('Please Input : H')
+			self.__writeSerialCmd(FIPFlashAddress[0])
 
-		# Write FIP
-		FIPFlashAddress = flashAddress["FIP"]
-		self.__writeSerialCmd('XLS2')
-		self.__serialRead('Please Input : H')
-		self.__writeSerialCmd(FIPFlashAddress[0])
+			self.__serialRead('Please Input : H')
+			self.__writeSerialCmd(FIPFlashAddress[1])
+			self.__serialRead('please send !')
 
-		self.__serialRead('Please Input : H')
-		self.__writeSerialCmd(FIPFlashAddress[1])
-		self.__serialRead('please send !')
+			print("Writing FIP...")
+			self.__writeFileToSerial(self.__args.fipImage)
+			self.__wait_for_prompt()
+			print("FIP write completed.\n")
 
-		print("Writing FIP...")
-		self.__writeFileToSerial(self.__args.fipImage)
-		self.__wait_for_prompt()
-		print("FIP write completed.\n")
+		# Write PCIe PHY firmware (rcar_gen4_pcie.bin), if provided
+		if self.__args.pcieFwImage:
+			PcieFlashAddress = flashAddress["PCIE"]
+			self.__write_binary_chunked_xls3(
+				"PCIe firmware (rcar_gen4_pcie.bin)", self.__args.pcieFwImage, int(PcieFlashAddress[0], 16))
 
 		# Write board identification
 		BIDFlashAddress = flashAddress["BID"]
-		if (self.__args.bidImage.endswith('.srec')):
-			self.__writeSerialCmd('XLS2')
-		else:
+		bid_is_xls3 = not self.__args.bidImage.endswith('.srec')
+		if bid_is_xls3:
 			self.__writeSerialCmd('XLS3')
+		else:
+			self.__writeSerialCmd('XLS2')
 		self.__serialRead('Please Input : H')
 		self.__writeSerialCmd(BIDFlashAddress[0])
 
@@ -434,8 +619,49 @@ class BootloaderFlashUtil:
 
 		print("Writing board identification...")
 		self.__writeFileToSerial(self.__args.bidImage)
-		self.__wait_for_prompt()
+		if is_v4h and bid_is_xls3:
+			bid_size = os.path.getsize(self.__args.bidImage)
+			self.__wait_for_v4h_xls3_ack(int(BIDFlashAddress[1], 16), bid_size)
+		else:
+			self.__wait_for_prompt()
 		print("Board identification write completed.\n")
+
+	def __write_binary_chunked_xls3(self, label, file_path, flash_offset):
+		"""Write a raw binary file to xSPI via xls3, chunked in 128KB blocks."""
+		chunk_size = 128 * 1024
+		total_size = os.path.getsize(file_path)
+		import math
+		total_chunks = math.ceil(total_size / chunk_size)
+
+		print(f"Writing {label} — {total_size} bytes in {total_chunks} chunks...")
+
+		with open(file_path, "rb") as f:
+			offset = flash_offset
+			while True:
+				chunk = f.read(chunk_size)
+				if not chunk:
+					break
+
+				self.__writeSerialCmd('')
+				self.__wait_for_prompt(30)
+				self.__writeSerialCmd('XLS3')
+
+				self.__serialRead('Please Input : H')
+				size_hex = f"{len(chunk):X}"
+				self.__writeSerialCmd(size_hex)
+
+				self.__serialRead('Please Input : H')
+				offset_hex = f"{offset:X}"
+				self.__writeSerialCmd(offset_hex)
+
+				self.__serialRead('please send !')
+
+				self.__serialPort.write(chunk)
+				self.__wait_for_v4h_xls3_ack(offset, len(chunk), timeout=30)
+
+				offset += len(chunk)
+
+		print(f"{label} write completed.\n")
 
 	def __serialReadWithReconnect(self, cond='\n', max_retries=MAX_RECONNECT_RETRIES, allow_uboot_prompt=False) -> bool:
 		"""Read from serial with automatic reconnection on failure.

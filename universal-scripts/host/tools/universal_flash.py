@@ -32,20 +32,26 @@ except ImportError:
 
 # Constants
 MESSAGE_WIDTH = 85
-# Fixed baud rate for serial communication
+# Fixed baud rate for serial communication (U-Boot console requires 115200)
 DEFAULT_BAUD_RATE = 115200
+# Sparrow-hawk (V4H) Flash Writer/CR52 loader talks at 921600 from power-on,
+# with no 115200 auto-baud stage like the V2H/G2L boards.
+SPARROW_HAWK_BAUD_RATE = 921600
 
 script_name = os.path.basename(sys.argv[0])
 
 @dataclass
 class FlashInfo:
-    bl2: str
     board_identification: str
-    fip: str
     flash_writer: str
     ipl_flash_method: str
     rootfs: str
     rootfs_flash_method: str
+    spl: str = ""
+    bl2: str = ""
+    fip: str = ""
+    uboot_fit: str = ""
+    pcie_fw: str = ""
 
 class UniversalFlashUtil:
     def __init__(self):
@@ -79,7 +85,7 @@ class UniversalFlashUtil:
         else:
             return  # Unknown OS, skip
 
-        tools = ['bpgen', 'fiptool']
+        tools = ['bpgen', 'fiptool', 'mkimage']
         for tool in tools:
             tool_path = os.path.join(bin_dir, tool)
             if os.path.exists(tool_path):
@@ -173,8 +179,13 @@ class UniversalFlashUtil:
             print("\nOperation cancelled by user.")
             return False
 
-        # Use fixed baud rate - U-Boot console requires 115200
-        self.selected_baud_rate = DEFAULT_BAUD_RATE
+        # This is the IPL Flash Writer baud rate.  Sparrow-Hawk's CR52 Flash
+        # Writer talks at 921600 from power-on; its normal U-Boot console is
+        # still 115200 and is selected separately for rootfs flashing below.
+        if self.selected_board_name == "sparrow-hawk":
+            self.selected_baud_rate = SPARROW_HAWK_BAUD_RATE
+        else:
+            self.selected_baud_rate = DEFAULT_BAUD_RATE
         
         print(f"Selected port [{self.selected_port}] with baud rate: {self.selected_baud_rate}")
         if self.selected_port_by_id and self.selected_port_by_id != self.selected_port:
@@ -204,6 +215,27 @@ class UniversalFlashUtil:
 
         # Map paths from images dir + flash_images.json
         board_soc = self.boards_data[self.selected_board_name]["soc"]
+
+        if board_soc == "v4h":
+            # Compose the selected board's FIT from Yocto's common U-Boot
+            # executable and board-specific U-Boot DTB.
+            raw_sa0 = os.path.join(self.__imagesDir, "u-boot", "sa0.bin")
+            uboot_nodtb = os.path.join(self.__imagesDir, "u-boot", "u-boot-nodtb-rz-cmn.bin")
+            uboot_dtb = os.path.join(
+                self.__imagesDir, "u-boot", "dtbs",
+                self.boards_data[self.selected_board_name]["uboot_dtb"])
+            args = parse_args([
+                "--board", self.selected_board_name,
+                "--soc", "v4h",
+                "--method", self.boards_data[self.selected_board_name]["ipl_flash_method"],
+                "--spl", raw_sa0,
+                "--u-boot-nodtb", uboot_nodtb,
+                "--uboot-dtbs", uboot_dtb,
+                "--out-dir", self.__imagesDir,
+            ])
+            FirmwareBuilder(args).run_all_v4h()
+            return
+
         bl2_path = os.path.join(self.__imagesDir, "atf", f"bl2-{self.selected_info.ipl_flash_method}-rz-cmn.bin")
         bl31_path = os.path.join(self.__imagesDir, "atf", "bl31-rz-cmn.bin")
         atf_fdts_path = os.path.join(self.__imagesDir, "atf", "fdts", self.boards_data[self.selected_board_name]['atf_fdts'])
@@ -230,13 +262,16 @@ class UniversalFlashUtil:
         board_data = self.boards_data[self.selected_board_name]
 
         self.selected_info = FlashInfo(
-            bl2=board_data["bl2"],
             board_identification=board_data["board_identification"],
-            fip=board_data["fip"],
             flash_writer=board_data["flash_writer"],
             ipl_flash_method=board_data["ipl_flash_method"],
             rootfs=board_data["rootfs"],
             rootfs_flash_method=board_data["rootfs_flash_method"],
+            spl=board_data.get("spl", ""),
+            bl2=board_data.get("bl2", ""),
+            fip=board_data.get("fip", ""),
+            uboot_fit=board_data.get("uboot_fit", ""),
+            pcie_fw=board_data.get("pcie_fw", ""),
         )
 
     def print_selected_info(self):
@@ -246,7 +281,12 @@ class UniversalFlashUtil:
 
         print(f"\nSelected Board: {self.selected_board_name}")
         print("Board Information:")
-        print(f"  BL2: {self.selected_info.bl2}")
+        if self.selected_info.spl:
+            print(f"  SPL: {self.selected_info.spl}")
+        else:
+            print(f"  BL2: {self.selected_info.bl2}")
+        if self.selected_info.uboot_fit:
+            print(f"  U-Boot FIT: {self.selected_info.uboot_fit}")
         print(f"  Board Identification: {self.selected_info.board_identification}")
         print(f"  Flash Writer: {self.selected_info.flash_writer}")
         print(f"  IPL Flash Method: {self.selected_info.ipl_flash_method}")
@@ -501,11 +541,13 @@ class UniversalFlashUtil:
         bootloader_args = [
             '--board_name', self.selected_board_name,
             '--flash_method', 'esd',
-            '--image_bl2', f"{self.__imagesDir}/bl2_{self.selected_board_name}.bin",
-            '--image_bl2_esd', f"{self.__imagesDir}/bl2_bp_esd_{self.selected_board_name}.bin",
             '--image_fip', f"{self.__imagesDir}/fip_{self.selected_board_name}.bin",
             '--image_bid', f"{self.__imagesDir}/{self.selected_info.board_identification}",
             '--esd_device', raw_device
+        ]
+        bootloader_args += [
+            '--image_bl2', f"{self.__imagesDir}/bl2_{self.selected_board_name}.bin",
+            '--image_bl2_esd', f"{self.__imagesDir}/bl2_bp_esd_{self.selected_board_name}.bin",
         ]
 
         bootloaderFlashUtil = BootloaderFlashUtil(args=bootloader_args)
@@ -520,10 +562,22 @@ class UniversalFlashUtil:
             '--serial_port', f"{self.selected_port}",
             '--serial_port_baud', f"{self.selected_baud_rate}",
             '--image_writer', f"{self.__imagesDir}/{self.selected_info.flash_writer}",
-            '--image_bl2', f"{self.__imagesDir}/{self.selected_info.bl2}",
-            '--image_fip', f"{self.__imagesDir}/{self.selected_info.fip}",
             '--image_bid', f"{self.__imagesDir}/{self.selected_info.board_identification}"
         ]
+
+        if self.selected_info.spl:
+            bootloader_args += ['--image_spl', f"{self.__imagesDir}/{self.selected_info.spl}"]
+        if self.selected_info.bl2:
+            bootloader_args += ['--image_bl2', f"{self.__imagesDir}/{self.selected_info.bl2}"]
+        if self.selected_info.fip:
+            bootloader_args += ['--image_fip', f"{self.__imagesDir}/{self.selected_info.fip}"]
+        if self.selected_info.uboot_fit:
+            bootloader_args += [
+                '--image_uboot_fit',
+                f"{self.__imagesDir}/{self.selected_info.uboot_fit}"
+            ]
+        if self.selected_info.pcie_fw:
+            bootloader_args += ['--image_pcie_fw', f"{self.__imagesDir}/{self.selected_info.pcie_fw}"]
 
         if self.selected_port_by_id:
             bootloader_args.extend(['--serial_port_by_id', self.selected_port_by_id])
@@ -534,27 +588,47 @@ class UniversalFlashUtil:
 
     def _flash_uload_bootloader(self):
         """Flash uload bootloader via serial"""
+        uload_baud_rate = (DEFAULT_BAUD_RATE if self.selected_board_name == "sparrow-hawk"
+                           else self.selected_baud_rate)
         uload_bootloader_args = [
             '--board_name', self.selected_board_name,
             '--serial_port', self.selected_port,
-            '--serial_port_baud', f"{self.selected_baud_rate}",
+            '--serial_port_baud', f"{uload_baud_rate}",
             '--image_bid', f"{self.selected_info.board_identification}"
         ]
+        if self.selected_info.uboot_fit:
+            uload_bootloader_args += ['--uboot_fit_path', self.selected_info.uboot_fit]
 
         uloadFlashUtil = UloadFlashUtil(args=uload_bootloader_args)
         uloadFlashUtil.writeUloadBootloader()
+
+    def _resolve_rootfs_image(self):
+        configured = os.path.join(self.__imagesDir, self.selected_info.rootfs)
+        if not os.path.isfile(configured):
+            raise FileNotFoundError(
+                f"Configured rootfs image is missing for {self.selected_board_name}: "
+                f"{configured}"
+            )
+        return configured
 
     def _flash_rootfs_serial(self):
         """Flash rootfs via serial (UDP/OTG fastboot)"""
         print("Writing rootfs...")
 
+        # Rootfs flashing talks to U-Boot in normal boot mode, not to the
+        # Flash Writer.  U-Boot's console is 115200 on every supported board,
+        # including Sparrow-Hawk (whose IPL Flash Writer requires 921600).
+        rootfs_baud_rate = DEFAULT_BAUD_RATE
+        if self.selected_baud_rate != rootfs_baud_rate:
+            print(f"Using U-Boot console baud rate for rootfs flashing: {rootfs_baud_rate}")
+
         # Prepare arguments for SD Flash
         sdflash_args = [
             '--board_name', f"{self.selected_board_name}",
             '--serial_port', f"{self.selected_port}",
-            '--serial_port_baud', f"{self.selected_baud_rate}",
+            '--serial_port_baud', f"{rootfs_baud_rate}",
             '--fastboot_type', f"{self.selected_info.rootfs_flash_method}",
-            '--image_rootfs', f"{self.__imagesDir}/{self.selected_info.rootfs}",
+            '--image_rootfs', self._resolve_rootfs_image(),
         ]
 
         # Add by-id path for reliable reconnection after power cycle

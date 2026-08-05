@@ -198,3 +198,29 @@ FIP = ["00000", "60000"]
 BL2 = ["1", "1", "8101E00"]
 FIP = ["1", "300", "44000000", "2", "8"]
 BID = ["1", "2FA", "810"]
+
+[sparrow-hawk]
+ethernet = ["e6800000", "e6810000"]
+ethernet_udp_index = "0"
+spl_dest  = "0xEB210000"
+fconf_dtb_base = "0x08130000"
+uboot_load_address = "0x44100000"
+load_address = "0x48000000"
+
+[sparrow-hawk.uload]
+verify_address = "0x49000000"
+SPL = "00000"
+UBOOT_FIT = "80000"
+BID = "2C0000"
+PCIE = "300000"
+erase_size = "310000"
+spl_max_size = "80000"
+uboot_fit_max_size = "240000"
+bid_size = "810"
+pcie_max_size = "10000"
+
+[sparrow-hawk.xspi]
+SPL = ["EB210000", "00000"]
+UBOOT_FIT = ["00000", "80000"]
+PCIE = ["300000"]
+BID = ["00810", "2C0000"]
