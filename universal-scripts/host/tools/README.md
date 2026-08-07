@@ -182,10 +182,12 @@ Fastboot/OTG flashing on Windows requires the device's **Fastboot / USB-download
 > - `fiptool.exe` + `libcrypto-3-x64.dll` (OpenSSL library)
 > - `bpgen.exe` (statically linked, no DLLs needed)
 > - `objcopy.exe` + `libwinpthread-1.dll` (MinGW runtime)
+> - `mkimage.exe` (U-Boot FIT image tool, MSYS2 build) + `msys-2.0.dll`,
+>   `msys-crypto-3.dll`, `msys-ssl-3.dll` (MSYS2 runtime + OpenSSL)
 >
 > **You do NOT need to install MinGW-w64, MSYS2, or OpenSSL.** The scripts automatically use the bundled binaries.
-> V4H FIT generation additionally requires U-Boot `mkimage`; install it in
-> `PATH` or pass `--mkimage`.
+> V4H FIT generation uses the bundled `mkimage.exe`; pass `--mkimage` only to
+> override it with a different build.
 
 ## JSON Configuration for a New Board
 
