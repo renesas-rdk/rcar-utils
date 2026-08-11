@@ -9,8 +9,8 @@ Pipeline:
 	- For V2H: structured AA55FFFF record(s) via bpgen --mode and --dest
 	- (Optional) Append BL2(+FDTs) to BP for flows that expect BP+BL2 in one blob
 	- Emit SREC with VMA from TOML or CLI override
-3) Legacy boards: U-Boot(nodtb)+DTBs -> u-boot_<board>.bin
-4) Legacy boards: FIP (fiptool) -> fip_<board>.bin and SREC
+3) RZ boards (RZ/G2L, RZ/V2L, RZ/V2H): U-Boot(nodtb)+DTBs -> u-boot_<board>.bin
+4) RZ boards: FIP (fiptool) -> fip_<board>.bin and SREC
 5) V4H: mkimage(U-Boot nodtb + selected board DTB) -> u-boot_<board>.itb and SREC
 
 Inputs & Config:
@@ -157,7 +157,7 @@ class FirmwareBuilder:
 		else:
 			atf_dtb = self.boards_data[self.board].get("atf_fdts")
 			if not atf_dtb and not args.atf_fdts:
-				raise ValueError(f"atf_fdts is required for legacy board {self.board}")
+				raise ValueError(f"atf_fdts is required for RZ board {self.board}")
 			default_atf_fdts = (
 				[IMG_DIR / "atf" / "fdts" / atf_dtb] if atf_dtb else []
 			)
@@ -220,7 +220,7 @@ class FirmwareBuilder:
 			self.uboot_fit_vma = hex_norm(args.uboot_fit_vma or uboot_fit_arr[0])
 			self.uboot_load_address = hex_norm(board_cfg.get("uboot_load_address", "0x44100000"))
 		else:
-			# Legacy TF-A FIP VMA get from TOML unless overridden.
+			# The TF-A FIP VMA for RZ boards comes from TOML unless overridden.
 			fip_arr = method_cfg.get("FIP", [])
 			if args.fip_vma:
 				self.fip_vma = hex_norm(args.fip_vma)

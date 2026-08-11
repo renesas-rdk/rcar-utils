@@ -158,4 +158,4 @@ Key differences from the `[<board_name>.xspi]` template above:
 > Sparrow-Hawk has no eMMC or eSD boot path. Only `[sparrow-hawk.xspi]` and
 > `[sparrow-hawk.uload]` are defined and have been validated on real hardware.
 
-See [R-Car V4H (Sparrow-Hawk) flashing flow](../README.md#r-car-v4h-sparrow-hawk-flashing-flow) in the main README for how these offsets are used during flashing, and for a full comparison with the legacy BL2/FIP flow.
+See [R-Car V4H (Sparrow-Hawk) flashing flow](../README.md#r-car-v4h-sparrow-hawk-flashing-flow) in the main README for how these offsets are used during flashing, and for a full comparison with the RZ board BL2/FIP flow.

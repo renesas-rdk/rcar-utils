@@ -52,7 +52,7 @@ class SdFlashUtil:
 	# Setup CLI parser
 	def __setupArgumentParser(self, args):
 		# Create parser
-		self.__parser = argparse.ArgumentParser(description='Utility to flash WIC image on RZ Board.\n', epilog='Example:\n\t./sd_flash.py')
+		self.__parser = argparse.ArgumentParser(description='Utility to flash WIC image on RZ and R-Car boards.\n', epilog='Example:\n\t./sd_flash.py')
 
 		# Add arguments
 		# Board name

@@ -1,4 +1,4 @@
-# RZ uload-bootloader - Bootloader Programming/Flashing on U-Boot console
+# ULoad Bootloader Programming for RZ and R-Car Boards
 
 This section describes the ULoad-bootloader flow for programming the bootloader from the U-Boot console. It supports xSPI flashing and is intended for cases where the device can boot to U-Boot and program flash using images stored on the removable media.
 
@@ -15,7 +15,7 @@ uload-bootloader
 ## Prerequisites
 
 The release does not automatically stage ULoad images on the SD card. The
-legacy ULoad flow requires BL2 and FIP artifacts rebuilt for the selected
+ULoad flow for RZ boards requires BL2 and FIP artifacts rebuilt for the selected
 board with the correct DTB/FCONF and configuration. Sparrow-Hawk uses SA0+SPL
 and a U-Boot FIT generated from U-Boot nodtb plus its selected DTB.
 
@@ -148,9 +148,9 @@ To specify custom file paths or override the defaults, the following arguments c
 - **--serial_port**: Serial port to use for communication with the board.
 - **--serial_port_by_id**: Stable Linux by-id serial path used after reconnect.
 - **--serial_port_baud**: Baud rate for the serial port (must be `115200`).
-- **--bl2_path**: Path or filename of the BL2 image for legacy boards.
+- **--bl2_path**: Path or filename of the BL2 image for RZ boards.
 - **--spl_path**: Path or filename of the SA0+SPL image for Sparrow-Hawk.
-- **--fip_path**: Path or filename of the FIP for legacy boards. It remains a
+- **--fip_path**: Path or filename of the FIP for RZ boards. It remains a
   compatibility alias for V4H.
 - **--uboot_fit_path**: Path or filename of the Sparrow-Hawk U-Boot FIT.
 - **--image_bid**: Path or filename of the board-identification file.
@@ -195,7 +195,7 @@ The script will:
 2. If pre-check passes, proceed to erase and write the SPI flash
 3. If pre-check fails, abort safely without erasing the flash
 
-Wait for the script to run automatically. No input or operation is required during this period. After completing the process, you can set RZ board to boot from xSPI as your needs.
+Wait for the script to run automatically. No input or operation is required during this period. After the process completes, configure the RZ or R-Car board to boot from xSPI as needed.
 
 ## Troubleshooting
 
@@ -210,7 +210,7 @@ This means one or more required files are not found on the SD card partition 1 (
 
 **Solution:**
 1. Verify that you completed **Step 1** (Prepare necessary images) in the "Flashing procedure" section above
-2. Run `firmware_compile.py` to generate the required legacy BL2/FIP or V4H
+2. Run `firmware_compile.py` to generate the required BL2/FIP files for RZ boards or V4H
    SPL/FIT files
 3. Copy all generated files to `/uload-bootloader/` directory on SD card partition 1 (FAT32)
 4. Ensure filenames match your board name (e.g., `bl2_bp_rzg2l-sbc.bin` for rzg2l-sbc)

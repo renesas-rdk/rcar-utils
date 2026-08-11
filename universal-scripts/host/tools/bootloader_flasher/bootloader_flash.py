@@ -119,7 +119,7 @@ class BootloaderFlashUtil:
 	# Setup CLI parser
 	def __setupArgumentParser(self, args=[]):
 		# Create parser
-		self.__parser = argparse.ArgumentParser(description='Util to flash bootloader on RZ Board.\n', epilog='Example:\n\t./bootloader_flash.py')
+		self.__parser = argparse.ArgumentParser(description='Util to flash bootloader on RZ and R-Car boards.\n', epilog='Example:\n\t./bootloader_flash.py')
 
 		# Add arguments
 		# Board name

@@ -815,7 +815,7 @@ def main():
     try:
         # Parse command line arguments
         parser = argparse.ArgumentParser(
-            description='Universal Flash Tool for RZ boards',
+            description='Universal Flash Tool for RZ and R-Car boards',
             add_help=False  # Disable default help to use custom help
         )
         parser.add_argument('--help', '-h', action='store_true', 

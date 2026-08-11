@@ -69,7 +69,7 @@ This will:
 | `--soc`             | `g2l`            | Target SoC family (`g2l`, `v2l`, `v2h`, `v4h`).                                       |
 | `--method`          | `xspi`           | Flash method (`xspi`, `emmc`, or `esd`).                                              |
 | `--bl2`             | auto from images | Path to BL2 binary (override default). Not used when `--soc v4h`.                     |
-| `--atf-fdts`        | auto from JSON   | *(Legacy boards only)* ATF FDT(s) to append to BL2; rejected for V4H.                 |
+| `--atf-fdts`        | auto from JSON   | *(RZ boards only)* ATF FDT(s) to append to BL2; rejected for V4H.                     |
 | `--uboot-dtbs`      | auto from JSON   | U-Boot DTB(s) to append to U-Boot nodtb.                                              |
 | `--bl31`            | auto from images | Path to BL31 binary (override default).                                               |
 | `--u-boot-nodtb`    | auto from images | Path to U-Boot (nodtb) binary (override default).                                     |
@@ -116,7 +116,7 @@ Without overrides, the script reads the corresponding files under
 `target/images/u-boot/`. `universal_flash.py` passes those inputs explicitly.
 
 > [!IMPORTANT]
-> Unlike the legacy pipeline, **`run_all_v4h()` has no `--tos-fw` step**. It
+> Unlike the RZ board pipeline, **`run_all_v4h()` has no `--tos-fw` step**. It
 > builds only the SPI loader inputs (SA0+SPL and the U-Boot-only FIT). Do not embed
 > BL31/OP-TEE in that FIT: SPL only copies loadables and cannot construct the
 > EL3 handoff. V4H OP-TEE is supplied by the Yocto WIC as separate `/boot`
@@ -134,6 +134,6 @@ Without overrides, the script reads the corresponding files under
 
 - VMAs are pulled from boards_flash_config.toml per board and flash method.
 - ATF DTB and U-Boot DTB names are taken from flash_images.json.
-- Legacy tools are prebuilt in the tools directories. V4H additionally needs
+- The tools used for RZ boards are prebuilt in the tools directories. V4H additionally needs
   U-Boot `mkimage` in `PATH` or supplied with `--mkimage`.
 - For `--soc v4h`, see [R-Car V4H (Sparrow-Hawk) build pipeline](#r-car-v4h-sparrow-hawk-build-pipeline) above — the BL2/bpgen/fiptool notes elsewhere in this document do not apply.

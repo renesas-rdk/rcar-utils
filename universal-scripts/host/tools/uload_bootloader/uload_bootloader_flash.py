@@ -40,7 +40,7 @@ class UloadFlashUtil:
 
 	def __setupArgumentParser(self, args):
 		self.__parser = argparse.ArgumentParser(
-			description='Util to flash bootloader from U-Boot console on RZ Board.\n'
+			description='Util to flash bootloader from U-Boot console on RZ and R-Car boards.\n'
 						'NOTE: Images must be on the SD card FAT32 partition 1.\n',
 			epilog='Example:\n  ./uload_bootloader_flash.py --board_name rzg2l-sbc'
 		)

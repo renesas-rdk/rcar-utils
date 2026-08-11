@@ -1,6 +1,6 @@
-# Root filesystem Programming/Flashing Procedure for RZ board on multiple OS environment
+# Root Filesystem Programming for RZ and R-Car Boards
 
-This document introduces the comprehensive instructions for flashing a root filesystem (`.wic`) to RZ boards using `sd_flash.py`. It includes prerequisites, Fastboot availability, driver setup, usage for UDP and OTG fastboot, and troubleshooting.
+This document provides instructions for flashing a root filesystem (`.wic`) to RZ and R-Car boards using `sd_flash.py`. It includes prerequisites, Fastboot availability, driver setup, UDP and OTG Fastboot usage, and troubleshooting.
 
 ---
 
