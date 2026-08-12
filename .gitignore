@@ -1,0 +1,6 @@
+# Kernel source, cloned on demand by local-build-scripts/common.sh.
+/linux-sh/
+
+# Everything the build produces: installed modules, cloned out-of-tree module
+# sources, TF-A, the initramfs tree, the fitImage and the download cache.
+/workspace/
