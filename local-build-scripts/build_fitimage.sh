@@ -6,6 +6,10 @@
 # every device tree overlay, each overlay exposed as its own FIT
 # configuration so that boot.cmd can select them at run time.
 #
+# "all" builds every input it needs: the kernel (Image, device trees and
+# modules), BL31 and the initramfs. Only a blob whose path is pinned in
+# config.ini (BL31_BIN, INITRAMFS_CPIO) is taken as-is from another build.
+#
 set -uo pipefail
 
 source ./config.ini
@@ -88,24 +92,86 @@ FIT_TEMPLATE_DIR="${SCRIPT_DIR}/fit/rcar-v4h-sh"
 ensure_kernel_dir || exit 1
 
 # KERNEL_DIR, FIT_OUTPUT_DIR, TFA_OUTPUT_DIR and INITRAMFS_OUTPUT_DIR come
-# from common.sh. Default the two blobs that other targets produce, so that
-# "fitimage all" after "bl31 all" and "initramfs all" needs no further
-# configuration.
+# from common.sh. Unset blobs default to what the bl31 and initramfs targets
+# build; a path set in config.ini comes from another build and is never
+# rebuilt here. The *_FROM_BUILD flags record which of the two it is.
+BL31_FROM_BUILD=1
 if [ -z "${BL31_BIN:-}" ]; then
 	BL31_BIN="${TFA_OUTPUT_DIR}/${BL31_NAME}"
+else
+	BL31_FROM_BUILD=0
 fi
+INITRAMFS_FROM_BUILD=1
 if [ -z "${INITRAMFS_CPIO:-}" ]; then
 	INITRAMFS_CPIO="${INITRAMFS_OUTPUT_DIR}/${INITRAMFS_NAME}"
+else
+	INITRAMFS_FROM_BUILD=0
 fi
 
 # ---- Steps ----
 
-# Build the kernel Image and every device tree, including the .dtbo overlays.
+# Build the kernel Image, every device tree including the .dtbo overlays, and
+# the modules. The modules matter because the initramfs takes
+# pcie-rcar-gen4.ko from this same build.
 mk_kernel() {
 	echo '|============================================|'
-	echo '|      Build kernel Image + device trees     |'
+	echo '|  Build kernel Image + device trees + mods  |'
 	echo '|============================================|'
-	./build_kernel.sh "all" || exit 1
+	./build_kernel.sh "modules" || exit 1
+}
+
+mk_bl31() {
+	echo '|============================================|'
+	echo '|              Build TF-A BL31               |'
+	echo '|============================================|'
+	./build_bl31.sh "all" || exit 1
+}
+
+mk_initramfs() {
+	echo '|============================================|'
+	echo '|             Build the initramfs            |'
+	echo '|============================================|'
+	./build_initramfs.sh "all" || exit 1
+}
+
+# BL31 does not depend on the kernel, so an existing blob is reused.
+ensure_bl31() {
+	if [ -f "${BL31_BIN}" ]; then
+		echo "BL31: reusing ${BL31_BIN}"
+		return 0
+	fi
+	if [ "${BL31_FROM_BUILD}" != "1" ]; then
+		echo "Error: BL31 blob not found: ${BL31_BIN}"
+		echo "       BL31_BIN points at a blob from another build, so it is not"
+		echo "       built here. Fix the path in config.ini, or leave BL31_BIN"
+		echo "       unset to have this script build TF-A."
+		exit 1
+	fi
+	mk_bl31
+}
+
+# The initramfs carries pcie-rcar-gen4.ko, whose vermagic has to match the
+# kernel in the same fitImage: "rebuild" rebuilds it along with the kernel,
+# "reuse" only builds it when it is missing.
+ensure_initramfs() {
+	local mode="${1:-reuse}"
+
+	if [ "${INITRAMFS_FROM_BUILD}" != "1" ]; then
+		if [ ! -f "${INITRAMFS_CPIO}" ]; then
+			echo "Error: initramfs not found: ${INITRAMFS_CPIO}"
+			echo "       INITRAMFS_CPIO points at an image from another build, so"
+			echo "       it is not built here. Fix the path in config.ini, or"
+			echo "       leave INITRAMFS_CPIO unset to have this script build it."
+			exit 1
+		fi
+		return 0
+	fi
+
+	if [ "${mode}" = "reuse" ] && [ -f "${INITRAMFS_CPIO}" ]; then
+		echo "initramfs: reusing ${INITRAMFS_CPIO}"
+		return 0
+	fi
+	mk_initramfs
 }
 
 # Copy everything the .its refers to next to the .its itself, the same way the
@@ -148,8 +214,6 @@ stage_inputs() {
 	if [ ! -f "${BL31_BIN}" ]; then
 		echo "Error: BL31 blob not found: ${BL31_BIN}"
 		echo "       Every FIT configuration loads BL31, so it is mandatory."
-		echo "       Build it with './main_build.sh bl31 all', or point BL31_BIN"
-		echo "       at a blob from another build in config.ini."
 		exit 1
 	fi
 	install -m 644 "${BL31_BIN}" "${FIT_OUTPUT_DIR}/${BL31_NAME}"
@@ -162,8 +226,7 @@ stage_inputs() {
 		echo "Warning: no initramfs available (INITRAMFS_CPIO=${INITRAMFS_CPIO:-unset})."
 		echo "         The fitImage is generated without the 'initramfs'"
 		echo "         configuration, so booting a rootfs that is not on"
-		echo "         eMMC/SD will fail. Build it with"
-		echo "         './main_build.sh initramfs all'."
+		echo "         eMMC/SD will fail."
 	fi
 
 	if [ ! -f "${FIT_TEMPLATE_DIR}/boot.cmd" ]; then
@@ -329,13 +392,18 @@ echo "Output directory: ${FIT_OUTPUT_DIR}"
 
 case "${cmd}" in
 	'image')
-		# Reuse whatever is already built in KERNEL_DIR.
+		# Reuse what is already built in KERNEL_DIR; only build missing blobs.
+		ensure_bl31
+		ensure_initramfs reuse
 		stage_inputs
 		gen_its
 		mk_fitimage
 		;;
 	'all')
 		mk_kernel
+		ensure_bl31
+		# After mk_kernel, so its module comes from this kernel build.
+		ensure_initramfs rebuild
 		stage_inputs
 		gen_its
 		mk_fitimage
