@@ -101,7 +101,8 @@ else
 fi
 
 echo --- Booting ---;
-setenv conf "${initramfs_conf}${j1_conf}${j2_conf}${j4_conf}${fan_conf}${conf_append}"
+# UIO/CMEM overlay is applied by default
+setenv conf "${initramfs_conf}#uio${j1_conf}${j2_conf}${j4_conf}${fan_conf}${conf_append}"
 echo bootcmd: bootm ${loadaddr}${conf}
 bootm ${loadaddr}${conf}
 
