@@ -1,0 +1,39 @@
+From: Cong Nguyen <cong.nguyen.zn@renesas.com>
+Date: Mon, 17 Aug 2026 08:00:00 +0000
+Subject: [PATCH] srvcore: Do not log an error when the SoC timer clock is not
+ configured
+
+PVRSRVGetSocFreqKM() is called by user space every time a client connects
+to the GPU (timestamp correlation for PVRScope/profiling). It logs
+
+    PVR_K:(Error): NNN: SOC Timer is not configured correctly [1058]
+
+whenever RGX_TIMING_INFORMATION::ui32SOCClockSpeed is 0. The R-Car system
+layer (services/system/rgx_rcar/sysconfig.c) never fills that field and the
+build does not enable SUPPORT_SOC_TIMER, so on R-Car V4H every GL/Vulkan
+client produces one of these lines in dmesg although nothing is wrong: the
+value is only reported back to user space, the driver does not depend on it.
+
+Log it as an informational message instead (off by default, visible with
+PVRDebugLevel), so dmesg is not flooded and real PVR_K errors stand out.
+---
+ rogue_km/services/server/common/srvcore.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+--- a/rogue_km/services/server/common/srvcore.c
++++ b/rogue_km/services/server/common/srvcore.c
+@@ -1053,9 +1053,13 @@ PVRSRV_ERROR PVRSRVGetSocFreqKM(CONNECTION_DATA *psConnection,
+ 	RGX_DATA *psRGXData = (RGX_DATA*)psDeviceNode->psDevConfig->hDevData;
+ 	PVR_UNREFERENCED_PARAMETER(psConnection);
+ 
++	/* System layers that do not drive the SoC timer (e.g. R-Car: no
++	 * SUPPORT_SOC_TIMER, ui32SOCClockSpeed left at 0) hit this on every
++	 * client connection; it is informational only, do not spam dmesg. */
+ 	if (psRGXData->psRGXTimingInfo->ui32SOCClockSpeed == 0)
+ 	{
+-		PVR_DPF((PVR_DBG_ERROR, "SOC Timer is not configured correctly"));
++		PVR_DPF((PVR_DBG_MESSAGE, "%s: SOC timer clock speed not configured "
++		         "by the system layer (reporting 0)", __func__));
+ 	}
+ 
+ 	*pui32SocFreq = psRGXData->psRGXTimingInfo->ui32SOCClockSpeed;

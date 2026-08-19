@@ -1,0 +1,42 @@
+From: Cong Nguyen <cong.nguyen.zn@renesas.com>
+Date: Mon, 17 Aug 2026 08:30:00 +0000
+Subject: [PATCH] rgx_rcar: Log clock rates as messages, not errors
+
+The R-Car system layer prints the GPU clock rate it found/rounded on every
+clock enable at PVR_DBG_ERROR level:
+
+    PVR_K:(Error): SysDevInit: clk_prepare_enable 599999976
+    PVR_K:(Error): EnableClocks: cur_rate. res = 599999976
+    PVR_K:(Error): EnableClocks: clk_round_rate. res = 599999976
+
+Nothing failed there (the real failure paths keep their own error prints),
+these are just informational, so demote them to PVR_DBG_MESSAGE.
+---
+ rogue_km/services/system/rgx_rcar/sysconfig.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+--- a/rogue_km/services/system/rgx_rcar/sysconfig.c
++++ b/rogue_km/services/system/rgx_rcar/sysconfig.c
+@@ -325,11 +325,11 @@ static PVRSRV_ERROR SetClocks(SYS_DATA *psSysData, unsigned long set_rate, unsig
+ 	clk = psSysData->psRGX_FCK;
+ 
+ 	cur_rate = clk_get_rate(clk);
+-	PVR_DPF((PVR_DBG_ERROR, "EnableClocks: cur_rate. res = %ld", cur_rate));
++	PVR_DPF((PVR_DBG_MESSAGE, "EnableClocks: cur_rate. res = %ld", cur_rate));
+ 
+ 	// new_rate = clk_round_rate(psSysData->psRGX_FCK, set_rate + 1000000);
+ 	new_rate = clk_round_rate(clk, 1);
+-	PVR_DPF((PVR_DBG_ERROR, "EnableClocks: clk_round_rate. res = %ld", new_rate));
++	PVR_DPF((PVR_DBG_MESSAGE, "EnableClocks: clk_round_rate. res = %ld", new_rate));
+ 	// if (new_rate <= 0)
+ 	// {
+ 	// 	PVR_DPF((PVR_DBG_ERROR, "EnableClocks: clk_round_rate failed. res = %ld", new_rate));
+@@ -622,7 +622,7 @@ static int SysDevInit(struct platform_device *pdev)
+ 		return ret;
+ 
+ 	ret = clk_get_rate(clk_gsx);
+-	PVR_DPF((PVR_DBG_ERROR, "%s: clk_prepare_enable %d", __FUNCTION__, ret));
++	PVR_DPF((PVR_DBG_MESSAGE, "%s: clk_prepare_enable %d", __FUNCTION__, ret));
+ 
+ #endif /* defined(PVR_LINUX_DYNAMIC_RGX_RESOURCE_INFO) */
+ 
