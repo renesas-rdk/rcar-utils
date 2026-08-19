@@ -146,6 +146,11 @@ mk_stage() {
 	install -d "${STAGE_DIR}/proc" "${STAGE_DIR}/dev" "${STAGE_DIR}/sys" \
 	           "${STAGE_DIR}/mnt" "${STAGE_DIR}/usr/lib/firmware"
 
+	# The kernel firmware loader only ever searches /lib/firmware and
+	# /lib/firmware/<release>
+	ln -sfn usr/lib "${STAGE_DIR}/lib"
+	echo "  lib -> usr/lib"
+
 	install -m 644 "${ko}" "${STAGE_DIR}/$(basename "${PCIE_MODULE}")"
 	echo "  $(basename "${PCIE_MODULE}")"
 
