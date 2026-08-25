@@ -4,3 +4,7 @@
 # Everything the build produces: installed modules, cloned out-of-tree module
 # sources, TF-A, the initramfs tree, the fitImage and the download cache.
 /workspace/
+
+# The same, for a kernel variant built with KERNEL_VARIANT=<name> into its own
+# WORKSPACE_DIR (e.g. workspace-preempt-rt/).
+/workspace-*/
