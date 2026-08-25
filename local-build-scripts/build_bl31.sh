@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# Build the ARM Trusted Firmware BL31 blob that meta-sparrow-hawk deploys with
-# the arm-trusted-firmware recipe (bl31-sparrow-hawk.bin).
+# Build the ARM Trusted Firmware BL31 blob used by the Sparrow Hawk fitImage
+# (bl31-sparrow-hawk.bin).
 #
 # Every FIT configuration loads BL31 through "loadables", so the fitImage
 # cannot be assembled without it.
@@ -27,9 +27,8 @@ TFA_SRCREV="${TFA_SRCREV:-1d5aa939bc8d3d892e2ed9945fa50e36a1a924cc}"
 # TFA_SRC_DIR and TFA_OUTPUT_DIR come from common.sh.
 BL31_NAME="bl31-sparrow-hawk"
 
-# From the recipe: PLATFORM:rcar-gen4, BUILD_OPT:rcar-gen4 and the
-# "sparrow_hawk_r8a779g3[default]" varflag. Kept verbatim so the blob matches
-# the one the recipe produces, apart from the compiler version.
+# PLATFORM=rcar-gen4, BUILD_OPT=rcar-gen4 and the board flags below are the
+# complete Sparrow Hawk build contract.
 TFA_PLAT="rcar_gen4"
 TFA_BUILD_OPT=(bl31 rcar_srecord)
 TFA_CLEAN_OPT=(clean_srecord)
@@ -46,9 +45,8 @@ TFA_OPT=(
 
 export CROSS_COMPILE="${CROSS_COMPILE:-aarch64-linux-gnu-}"
 
-# TF-A is a standalone application whose makefiles set up their own flags; the
-# recipe unexports these for the same reason, and inheriting the host's would
-# break the build.
+# TF-A is a standalone application whose makefiles set up their own flags;
+# inheriting host flags would break the build.
 unset CFLAGS CPPFLAGS CXXFLAGS LDFLAGS AS LD
 
 fetch_src() {
@@ -85,7 +83,7 @@ mk_build() {
 	echo '|============================================|'
 	echo '|          Build ARM Trusted Firmware        |'
 	echo '|============================================|'
-	# Same three invocations as the recipe's do_ipl_compile().
+	# Produce the binary, ELF, and S-record forms used by this repository.
 	make -C "${TFA_SRC_DIR}" distclean >/dev/null || exit 1
 	make -C "${TFA_SRC_DIR}" "${TFA_CLEAN_OPT[@]}" \
 		PLAT="${TFA_PLAT}" SPD=none MBEDTLS_COMMON_MK=1 "${TFA_OPT[@]}" >/dev/null || exit 1

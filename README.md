@@ -1,7 +1,8 @@
 # R-Car Utility - R-Car V4H Sparrow Hawk
 
-Scripts to build the Linux kernel and a U-Boot FIT image (`fitImage`) for the
-R-Car V4H Sparrow Hawk, outside of Yocto.
+Standalone scripts to build and deploy the Linux kernel, modules, firmware,
+initramfs, TF-A BL31, and U-Boot FIT image (`fitImage`) for the R-Car V4H
+Sparrow Hawk.
 
 This branch (`ubuntu/rcar-v4h-sh`) is trimmed down to the Sparrow Hawk build
 only.
@@ -26,17 +27,18 @@ configuration and usage details.
 ## Quick start
 
 ```bash
-cd local-build-scripts
-./main_build.sh bl31 all          # ARM Trusted Firmware BL31
-./main_build.sh kernel modules    # kernel, device trees and modules
-./main_build.sh initramfs all     # only needed to boot from NVMe/USB
-./main_build.sh fitimage all
+./scripts/rcar-driver.sh preflight
+./scripts/rcar-driver.sh smoke
 ```
+
+`smoke` builds the complete deployable output—installed kernel and external
+modules, BL31, initramfs, and fitImage—then verifies the artifacts.
 
 No configuration is needed. The kernel source is expected in `linux-sh/` and
 the build offers to clone it (single branch) when it is missing; everything
 produced is written under `workspace/`, next to these scripts. Uncomment a path
 in `config.ini` only to build somewhere else.
 
-Every input the fitImage needs is built from source, so no Yocto deploy
-directory is involved.
+Every input and deployable artifact is produced directly by this repository.
+No external build system, packaging step, or pre-populated deploy directory is
+required.

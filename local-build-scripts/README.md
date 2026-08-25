@@ -46,7 +46,8 @@ sudo apt install \
     kmod \
     cpio \
     curl \
-    git
+    git \
+    device-tree-compiler
 ```
 
 ## Usage
@@ -73,8 +74,8 @@ Option:
                 - modules-install
 
         2. ext-modules
-            Build the out-of-tree kernel modules that meta-sparrow-hawk ships
-            as separate recipes (cmemdrv, qos). Requires a built kernel.
+            Build the pinned out-of-tree modules cmemdrv, qos and pvrsrvkm.
+            Requires a built kernel.
             <sub_command>:
                 - all     (fetch if needed, then build)
                 - fetch   (re-clone at the pinned revision and re-apply patches)
@@ -82,18 +83,16 @@ Option:
                 - clean
 
         3. bl31
-            Build the ARM Trusted Firmware BL31 blob that meta-sparrow-hawk
-            deploys with the arm-trusted-firmware recipe. Every FIT
-            configuration loads it, so the fitimage target needs it.
+            Build the ARM Trusted Firmware BL31 blob. Every FIT configuration
+            loads it, so the fitimage target needs it.
             <sub_command>:
                 - all   (fetch if needed, then build)
                 - fetch (re-clone at the pinned revision)
                 - clean
 
         4. initramfs
-            Build the initramfs that meta-sparrow-hawk produces with the
-            initramfs-image recipe (uInitramfs.cpio.gz). Needed to boot a
-            rootfs that is not on eMMC/SD. Requires built kernel modules.
+            Build uInitramfs.cpio.gz. Needed to boot a rootfs that is not on
+            eMMC/SD. Requires built kernel modules.
             <sub_command>:
                 - all     (build busybox if needed, then the cpio)
                 - image   (same as all)
@@ -101,10 +100,10 @@ Option:
                 - clean
 
         5. fitimage
-            Build a U-Boot FIT image (fitImage)
-            deployed by the meta-sparrow-hawk linux-fitimage recipe.
+            Build the deployable U-Boot FIT image (fitImage).
             <sub_command>:
-                - all   (build the kernel first, then the fitImage)
+                - all   (build/install kernel and external modules, build BL31
+                         and initramfs, then assemble the fitImage)
                 - image (assemble the fitImage from an existing kernel build)
                 - clean
 
@@ -123,7 +122,7 @@ For example:
         $ ./main_build.sh bl31 all
         $ ./main_build.sh initramfs all
 
-    Build a fitImage for the R-Car V4H Sparrow Hawk:
+    Build the complete deployable output for the R-Car V4H Sparrow Hawk:
         $ ./main_build.sh fitimage all
 
 Note: No configuration is needed to build. See config.ini for the layout.
@@ -131,9 +130,8 @@ Note: No configuration is needed to build. See config.ini for the layout.
 
 ## Kernel configuration
 
-Every build target configures the kernel first, the same way the
-`linux-renesas` recipe does: `sparrow_hawk_defconfig` and the
-`sparrow_hawk.config` fragment are concatenated and passed through
+Every build target configures the kernel first: `sparrow_hawk_defconfig` and
+the `sparrow_hawk.config` fragment are concatenated and passed through
 `make alldefconfig`.
 
 To change an option, edit `.config` through menuconfig and build as usual:
@@ -221,7 +219,7 @@ Initramfs settings, used by the `initramfs` target:
 PCIe PHY firmware, used by both the `initramfs` and the `kernel modules-install`
 targets:
 
-- **PCIE_FW_URL** / **PCIE_FW_SHA256**: PCIe PHY firmware, the same file and revision the `sparrow-hawk-fw` recipe fetches.
+- **PCIE_FW_URL** / **PCIE_FW_SHA256**: Pinned PCIe PHY firmware source and checksum.
 - **PCIE_FW_LIC_URL** / **PCIE_FW_LIC_SHA256**: Its licence, shipped next to the blob.
 
 FIT image settings, only used by the `fitimage` target:

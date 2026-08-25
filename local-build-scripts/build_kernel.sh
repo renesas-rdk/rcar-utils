@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# Build the Linux kernel, its device trees and its modules the way the
-# meta-sparrow-hawk linux-renesas recipe does.
+# Build the Linux kernel, device trees, and modules directly from the board
+# defconfig and configuration fragments.
 #
 set -uo pipefail
 

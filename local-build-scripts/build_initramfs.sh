@@ -1,12 +1,8 @@
 #!/bin/bash
 #
-# Build the initramfs that meta-sparrow-hawk produces with the initramfs-image
-# recipe (uInitramfs.cpio.gz).
-#
-# The recipe builds a full image - busybox linked against glibc, plus
-# ldconfig and three locale packages - to run a script that does nothing but
-# load one kernel module. This builds busybox statically instead, so none of
-# that is needed: ~1.2 MB against ~2.8 MB.
+# Build the Sparrow Hawk early-boot initramfs (uInitramfs.cpio.gz). Busybox is
+# static because the image only needs to load one kernel module and switch to
+# the real root filesystem.
 #
 # The kernel module is taken from the local kernel build rather than shipped
 # as a binary, so it always matches the kernel the fitImage is built from.
@@ -61,8 +57,7 @@ export LOCALVERSION=""
 export ARCH="${ARCH:-arm64}"
 export CROSS_COMPILE="${CROSS_COMPILE:-aarch64-linux-gnu-}"
 
-# Build busybox for arm64, statically. Static linking is what lets the image
-# drop libc.so.6, ldconfig and the locale packages that the recipe's one carries.
+# Build busybox for arm64, statically, without a dynamic loader or libc files.
 mk_busybox() {
 	local tarball
 
@@ -119,8 +114,7 @@ mk_busybox() {
 	fi
 }
 
-# Assemble the cpio tree. Mirrors what the recipe's ROOTFS_POSTPROCESS_COMMAND
-# hooks do: install the init script, create the mount points, and nothing else.
+# Assemble the minimal cpio tree required by the early boot path.
 mk_stage() {
 	local ko
 
@@ -156,8 +150,7 @@ mk_stage() {
 
 	# pcie-rcar-gen4 declares MODULE_FIRMWARE(rcar_gen4_pcie.bin) and calls
 	# request_firmware() from its LTSSM setup, so the blob has to be in the
-	# initramfs too - the module cannot probe without it. This is the same
-	# file the sparrow-hawk-fw recipe installs.
+	# initramfs too - the module cannot probe without it.
 	install_pcie_firmware "${STAGE_DIR}" || exit 1
 
 	if [ ! -f "${INITRAMFS_TEMPLATE_DIR}/init" ]; then

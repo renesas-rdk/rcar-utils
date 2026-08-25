@@ -22,8 +22,8 @@ Option:
                 - modules-install
 
         2. ext-modules
-            Build the out-of-tree kernel modules that meta-sparrow-hawk ships
-            as separate recipes (cmemdrv, qos). Requires a built kernel.
+            Build the pinned out-of-tree modules cmemdrv, qos and pvrsrvkm.
+            Requires a built kernel.
             <sub_command>:
                 - all     (fetch if needed, then build)
                 - fetch   (re-clone at the pinned revision and re-apply patches)
@@ -31,18 +31,16 @@ Option:
                 - clean
 
         3. bl31
-            Build the ARM Trusted Firmware BL31 blob that meta-sparrow-hawk
-            deploys with the arm-trusted-firmware recipe. Every FIT
-            configuration loads it, so the fitimage target needs it.
+            Build the ARM Trusted Firmware BL31 blob. Every FIT configuration
+            loads it, so the fitimage target needs it.
             <sub_command>:
                 - all   (fetch if needed, then build)
                 - fetch (re-clone at the pinned revision)
                 - clean
 
         4. initramfs
-            Build the initramfs that meta-sparrow-hawk produces with the
-            initramfs-image recipe (uInitramfs.cpio.gz). Needed to boot a
-            rootfs that is not on eMMC/SD. Requires built kernel modules.
+            Build uInitramfs.cpio.gz. Needed to boot a rootfs that is not on
+            eMMC/SD. Requires built kernel modules.
             <sub_command>:
                 - all     (build busybox if needed, then the cpio)
                 - image   (same as all)
@@ -52,7 +50,8 @@ Option:
         5. fitimage
             Build a U-Boot FIT image (fitImage)
             <sub_command>:
-                - all   (build the kernel first, then the fitImage)
+                - all   (build/install kernel and external modules, build BL31
+                         and initramfs, then assemble the fitImage)
                 - image (assemble the fitImage from an existing kernel build)
                 - clean
 
@@ -187,15 +186,14 @@ DOWNLOAD_DIR="${DOWNLOAD_DIR:-${WORKSPACE_DIR}/downloads}"
 # PCIe PHY firmware. pcie-rcar-gen4 calls request_firmware() while bringing the
 # link up, so the blob is needed both inside the initramfs and on the rootfs
 # next to the module - it is not part of the distro's linux-firmware package.
-# Same file and revision the sparrow-hawk-fw recipe fetches.
+# Pinned firmware file and revision used by this standalone build.
 PCIE_FW_URL="${PCIE_FW_URL:-https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/rcar_gen4_pcie.bin?h=20260519}"
 PCIE_FW_SHA256="${PCIE_FW_SHA256:-cad6315e51397e9e2dd401d79eaa873c7b67290bce381bb97728883cc243e5ff}"
 PCIE_FW_LIC_URL="${PCIE_FW_LIC_URL:-https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/LICENCE.r8a779g_pcie_phy?h=20260519}"
 PCIE_FW_LIC_SHA256="${PCIE_FW_LIC_SHA256:-fa0df1c508be531a302823721ae14258ba0481c9b1d717b2d3f2344aa0f66894}"
 
-# Download a file into the cache and verify it, echoing its path. Same
-# contract as the fetcher in build_ext_modules.sh: the checksum is what pins
-# the artifact, exactly like the recipes' SRC_URI does.
+# Download a file into the cache and verify it, echoing its path. The checksum
+# is what pins the artifact.
 fetch_file() {
 	local url="$1" sha="$2" name="$3"
 	local out="${DOWNLOAD_DIR}/${name}"

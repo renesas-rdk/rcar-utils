@@ -1,10 +1,9 @@
 #!/bin/bash
 #
-# Assemble a U-Boot FIT image (fitImage) for the R-Car V4H Sparrow Hawk that
-# is equivalent to the one produced by the meta-sparrow-hawk linux-fitimage
-# recipe: kernel + base DTB + TF-A BL31 + optional initramfs + boot script +
-# every device tree overlay, each overlay exposed as its own FIT
-# configuration so that boot.cmd can select them at run time.
+# Assemble a self-contained U-Boot FIT image (fitImage) for the R-Car V4H
+# Sparrow Hawk: kernel + base DTB + TF-A BL31 + optional initramfs + boot
+# script + every device tree overlay, each exposed as its own FIT configuration
+# so that boot.cmd can select them at run time.
 #
 # "all" builds every input it needs: the kernel (Image, device trees and
 # modules), BL31 and the initramfs. Only a blob whose path is pinned in
@@ -48,7 +47,7 @@ DTS_DIR="arch/arm64/boot/dts/renesas"
 KERNEL_IMAGE="arch/arm64/boot/Image"
 
 # FIT image nodes: "<node label>|<dtbo file name without directory>"
-# Order matches the linux-fitimage recipe's fit-image.its.
+# Keep the image order stable for readable, reproducible FIT listings.
 FIT_OVERLAY_IMAGES=(
 	"fdt-uio|${BOARD_DTB}-uio.dtbo"
 	"fdt-j1-imx219|${BOARD_DTB}-camera-j1-imx219.dtbo"
@@ -110,14 +109,21 @@ fi
 
 # ---- Steps ----
 
-# Build the kernel Image, every device tree including the .dtbo overlays, and
-# the modules. The modules matter because the initramfs takes
-# pcie-rcar-gen4.ko from this same build.
+# Build and install the kernel Image, every device tree including the .dtbo
+# overlays, and the in-tree modules. The installed tree is part of the final
+# deployable output, and the initramfs takes pcie-rcar-gen4.ko from this build.
 mk_kernel() {
 	echo '|============================================|'
-	echo '|  Build kernel Image + device trees + mods  |'
+	echo '| Build/install kernel + device trees + mods |'
 	echo '|============================================|'
-	./build_kernel.sh "modules" || exit 1
+	./build_kernel.sh "modules-install" || exit 1
+}
+
+mk_ext_modules() {
+	echo '|============================================|'
+	echo '|       Build/install external modules       |'
+	echo '|============================================|'
+	./build_ext_modules.sh "install" || exit 1
 }
 
 mk_bl31() {
@@ -174,8 +180,7 @@ ensure_initramfs() {
 	mk_initramfs
 }
 
-# Copy everything the .its refers to next to the .its itself, the same way the
-# recipe assembles it inside its deploy directory.
+# Copy everything the .its refers to next to the .its before assembly.
 stage_inputs() {
 	echo '|============================================|'
 	echo '|            Stage FIT image inputs          |'
@@ -401,6 +406,7 @@ case "${cmd}" in
 		;;
 	'all')
 		mk_kernel
+		mk_ext_modules
 		ensure_bl31
 		# After mk_kernel, so its module comes from this kernel build.
 		ensure_initramfs rebuild

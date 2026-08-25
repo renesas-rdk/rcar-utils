@@ -1,10 +1,7 @@
 #!/bin/bash
 #
-# Build the out-of-tree kernel modules that meta-sparrow-hawk ships as
-# separate recipes (kernel-module-cmemdrv, kernel-module-qos)
-#
-# Sources are cloned from the upstream repositories at the revisions pinned
-# by the recipes and patched with the same patches, kept under patches/.
+# Build the pinned cmem, qos, and PowerVR out-of-tree kernel modules. Sources
+# are fetched at pinned revisions or checksums and patched from patches/<name>/.
 #
 set -uo pipefail
 
@@ -40,14 +37,13 @@ GLES_FW_SHA256="${GLES_FW_SHA256:-6da8b5ca8d09ea7690f61340a5c5fbe8a13fb810e99be9
 
 # "<name>|<git|tar>|<url>|<srcrev or sha256>|<build subdir>|<.ko glob>|<install subdir>"
 # The build subdir and the .ko glob are relative to the module source
-# directory. The install subdir mirrors where the recipes install the module.
+# directory. The install subdir controls its location in the module tree.
 EXT_MODULES=(
 	"cmem|git|${CMEM_URL}|${CMEM_SRCREV}|.|*.ko|updates"
 	"qos|git|${QOS_URL}|${QOS_SRCREV}|qos-module/files/qos/drv|qos-module/files/qos/drv/*.ko|extra"
 	"gles|tar|${GLES_URL}|${GLES_SHA256}|rogue_km/build/linux/r8a779g_linux|rogue_km/pvrsrvkm.ko|extra"
 )
 
-# The environment the recipes set through include/rcar-bsp-modules-common.inc.
 # cmem's Makefile uses KERNEL_SRC, qos' Makefile uses KERNELSRC.
 export KERNELSRC="${KERNEL_DIR}"
 export KERNELDIR="${KERNEL_DIR}"
@@ -74,7 +70,7 @@ kernel_release() {
 }
 
 # Apply the patches listed in patches/<name>/series, in that order. The order
-# matters and is not alphabetical, it mirrors the recipe's SRC_URI.
+# matters and is deliberately not alphabetical.
 apply_patches() {
 	local name="$1" dir="$2"
 	local series="${PATCH_DIR}/${name}/series"
@@ -200,8 +196,7 @@ mk_build() {
 		IFS='|' read -r name type url rev sub _ _ <<<"${entry}"
 		ensure_src "${name}" "${type}" "${url}" "${rev}"
 		echo "--- building ${name}"
-		# The GPU driver's makefiles pick up host CFLAGS and choke on them,
-		# which is why the recipe unsets them before it runs make.
+		# The GPU driver's makefiles pick up host CFLAGS and choke on them.
 		( unset CFLAGS CPPFLAGS CXXFLAGS
 		  make -C "${EXT_MODULES_SRC_DIR}/${name}/${sub}" -j"$(nproc)" ) || exit 1
 	done
@@ -272,7 +267,7 @@ mk_install() {
 		echo "         initialise unless a matching rgx.fw is already installed."
 	fi
 
-	# Headers shipped by the -dev packages of the two recipes.
+	# Public headers needed by applications using these drivers.
 	local hdr
 	for hdr in \
 		"qos/qos-module/files/qos/drv/qos_public_common.h|usr/include/qos_public_common.h" \
@@ -283,6 +278,18 @@ mk_install() {
 			echo "  ${hdr##*|}"
 		fi
 	done
+
+	# modules_install runs depmod before these out-of-tree modules exist. Refresh
+	# the dependency files now so the staged tree is complete and deployable.
+	local depmod_bin
+	depmod_bin="$(command -v depmod 2>/dev/null || true)"
+	[ -n "${depmod_bin}" ] || [ ! -x /usr/sbin/depmod ] || depmod_bin=/usr/sbin/depmod
+	if [ -z "${depmod_bin}" ]; then
+		echo "Error: depmod not found; install kmod before installing external modules."
+		exit 1
+	fi
+	"${depmod_bin}" -b "${dest}/usr" "${kver}" || exit 1
+	echo "  refreshed usr/lib/modules/${kver}/modules.dep"
 
 	echo "Installed out-of-tree modules to ${dest}"
 }
