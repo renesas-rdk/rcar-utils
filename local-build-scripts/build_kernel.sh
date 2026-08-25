@@ -39,6 +39,27 @@ fi
 DEFCONFIG="${KERN_DEFCONFIG[$PLATFORM]}"
 CONFIG_FRAGMENT="${KERN_CONFIG_FRAGMENT[$PLATFORM]:-}"
 
+# Optional kernel variant. KERNEL_VARIANT=<name> merges
+# kernel-config/<name>.config on top of the board defconfig and fragment,
+# producing a second kernel from the same source tree. The variant fragment is
+# the last input to the merge, so it can override anything the board
+# configuration set - including CONFIG_LOCALVERSION, which is what gives the
+# variant its own "uname -r" and its own /usr/lib/modules/<release>.
+VARIANT_FRAGMENT=""
+if [ -n "${KERNEL_VARIANT:-}" ]; then
+	VARIANT_FRAGMENT="${COMMON_SH_DIR}/kernel-config/${KERNEL_VARIANT}.config"
+	if [ ! -f "${VARIANT_FRAGMENT}" ]; then
+		echo "Error: unknown KERNEL_VARIANT '${KERNEL_VARIANT}'."
+		echo "       No such fragment: ${VARIANT_FRAGMENT}"
+		echo "Available variants:"
+		for f in "${COMMON_SH_DIR}"/kernel-config/*.config; do
+			[ -e "$f" ] || { echo "  (none)"; break; }
+			echo "  $(basename "$f" .config)"
+		done
+		exit 1
+	fi
+fi
+
 # Copy of the .config this script generated last, kept next to it inside the
 # kernel tree (the kernel's .gitignore covers dot files, and mk_distclean
 # removes it along with the .config it describes). It is what lets
@@ -50,6 +71,9 @@ CONFIG_STAMP=".rcar-config.stamp"
 echo "Using DEFCONFIG=${DEFCONFIG}"
 if [ -n "${CONFIG_FRAGMENT}" ]; then
 	echo "Using CONFIG_FRAGMENT=${CONFIG_FRAGMENT}"
+fi
+if [ -n "${VARIANT_FRAGMENT}" ]; then
+	echo "Using KERNEL_VARIANT=${KERNEL_VARIANT} (${VARIANT_FRAGMENT})"
 fi
 
 if [ -n "${KERN_DTC_FLAGS[$PLATFORM]:-}" ]; then
@@ -88,6 +112,12 @@ mk_config_merged() {
 		echo "CONFIG_LOCALVERSION_AUTO=n"
 		echo "CONFIG_LOCALVERSION=\"${KERNEL_LOCALVERSION:--arm64-renesas}\""
 	} >> "${merged}"
+	# The variant fragment goes last of all: it is meant to override the board
+	# configuration, and its CONFIG_LOCALVERSION has to beat the one just
+	# written above.
+	if [ -n "${VARIANT_FRAGMENT}" ]; then
+		cat "${VARIANT_FRAGMENT}" >> "${merged}"
+	fi
 
 	echo '|============================================|'
 	echo '|      Configure kernel (alldefconfig)       |'
