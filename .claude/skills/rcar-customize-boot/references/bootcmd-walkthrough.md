@@ -193,9 +193,20 @@ There is no host-side test for this file. The most you can do:
    `mkimage -l workspace/fitimage/fitImage | grep -A3 '(script)'`
 2. Confirm every `#name` the script can emit exists as a configuration:
    `mkimage -l workspace/fitimage/fitImage | grep -E '^ Configuration'`
-3. On the board, read the echoed line before `bootm` — the script prints
-   `bootcmd: bootm ${loadaddr}${conf}` so the composed string is visible on the
-   console.
+3. On a booted board, read what the script composed — U-Boot records it in the
+   device tree it passes the kernel, so this needs **no serial console**:
+   `tr -d '\0' < /proc/device-tree/chosen/u-boot,bootconf`
+   → `default#uio#j1-imx708#fan-argon40`
+4. On the serial console, read the echoed line before `bootm`
+   (`bootcmd: bootm ${loadaddr}${conf}`) together with the `--- Check J1 ---`
+   probe output above it.
 
-Step 3 is the only real test. Steps 1–2 catch the common mistake (a config name
-that does not exist) without a board.
+Steps 3–4 are the real tests, and they answer different questions. **Step 3
+says what was chosen** — cheap, scriptable, works over ssh; it is the one to
+run after every edit. **Step 4 says why** — which `i2c probe` hit, what
+`imx708_read_id` read back — and it is the only way to tell "the device was not
+there" from "the device was there and detection missed it". Reach for it when
+step 3 is missing a name you expected.
+
+Steps 1–2 catch the common mistake (a config name that does not exist) without
+a board. Full on-board procedure: `rcar-verify-hardware`.

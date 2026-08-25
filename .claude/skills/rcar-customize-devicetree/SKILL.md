@@ -1,7 +1,6 @@
 ---
 name: rcar-customize-devicetree
 description: Edit or add R-Car V4H Sparrow Hawk device tree sources and overlays — the base r8a779g3-sparrow-hawk.dts and the .dtso overlays for cameras, displays, fans and UIO. Use to change board hardware description or add a new overlay. Do NOT use for selecting which overlay boots at run time (that is rcar-customize-boot) or for kernel Kconfig options.
-version: 0.0.1
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -25,7 +24,7 @@ Deep detail: [references/overlay-registration.md](references/overlay-registratio
 
 ## Prerequisites
 
-- `/rcar-setup-workspace` done; `fdtoverlay` and `dtc` on PATH.
+- `rcar-setup-workspace` done; `fdtoverlay` and `dtc` on PATH.
 - Know whether your change belongs in the **base** (always present) or an
   **overlay** (selected at boot). Anything optional or mutually exclusive —
   a camera on J1, one of four displays on J4 — must be an overlay.
@@ -38,7 +37,7 @@ Deep detail: [references/overlay-registration.md](references/overlay-registratio
 | Overlay sources | `linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-*.dtso` |
 | Build registration | `linux-sh/arch/arm64/boot/dts/renesas/Makefile` (~line 97+) |
 | FIT registration | `local-build-scripts/build_fitimage.sh` (`FIT_OVERLAY_IMAGES`, `FIT_OVERLAY_CONFIGS`) |
-| Boot selection | `local-build-scripts/fit/rcar-v4h-sh/boot.cmd` → `/rcar-customize-boot` |
+| Boot selection | `local-build-scripts/fit/rcar-v4h-sh/boot.cmd` → `rcar-customize-boot` |
 
 Current overlays: `uio`, `camera-j{1,2}-imx{219,462,708}` (6),
 `fan-{argon40,pwm}`, `rpi-display-2-{5,7}in`, `ws-display-13in`,
@@ -122,7 +121,24 @@ aliases.
 mkimage -l workspace/fitimage/fitImage | grep -E '^ Configuration'
 ```
 
-**6.** Make it selectable at boot → `/rcar-customize-boot`.
+**6.** Make it selectable at boot → `rcar-customize-boot`.
+
+A new overlay is **not** selected by anything yet: `boot.cmd` only appends names
+it detects, so until you decide how, the overlay is embedded and unreachable.
+That skill's *A new overlay: decide how it gets selected* covers the choice —
+ask the user how the device identifies itself, then either add autodetection,
+use the env-var opt-in pattern the fan uses, or tell them to select it by hand:
+
+```
+setenv conf_append '#<feature>'
+saveenv
+boot
+```
+
+Prefer autodetection when the device is reliably identifiable, so any board
+picks it up the way the cameras and displays already do. When it is not
+identifiable — no readable ID, GPIO-strapped, SPI/USB — say so and use
+`conf_append` rather than inventing a probe that guesses.
 
 ## Verification
 
@@ -141,6 +157,15 @@ fdtdump /tmp/merged.dtb | grep -A10 '<your-node>'
 ```
 
 `rcar-driver.sh verify` does the apply check for all overlays automatically.
+
+**All of this is host-side.** It proves the overlay *applies*; it cannot prove
+U-Boot selects it, that a driver binds, or that the hardware works. For an
+overlay that describes new external hardware, that gap is the whole question —
+deploy with `rcar-deploy-image`, then `rcar-verify-hardware`, which starts by
+confirming with you that the device is actually plugged in. On this board an
+unplugged camera and a broken `.dtso` look identical from inside Linux — the
+one string that separates them is `/proc/device-tree/chosen/u-boot,bootconf`,
+which records the configuration U-Boot actually selected.
 
 ## Gotchas
 

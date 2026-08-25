@@ -62,8 +62,10 @@ REL=$(cat linux-sh/include/config/kernel.release)
 # build everything from clean (installed kernel/external modules + BL31 + initramfs + FIT)
 ./scripts/rcar-driver.sh build fitimage all
 
-# incremental: rebuild kernel, re-assemble the FIT, check
-./scripts/rcar-driver.sh build kernel modules
+# incremental kernel change: refresh every kernel-dependent artifact, then check
+./scripts/rcar-driver.sh build kernel modules-install
+./scripts/rcar-driver.sh build ext-modules install
+./scripts/rcar-driver.sh build initramfs all
 ./scripts/rcar-driver.sh build fitimage image
 ./scripts/rcar-driver.sh verify
 
@@ -84,7 +86,7 @@ REL=$(cat linux-sh/include/config/kernel.release)
 kernel        clean | distclean | defconfig | menuconfig | image | dtbs |
               all | modules | modules-install
 ext-modules   all | fetch | install | clean
-bl31          all | fetch | clean
+bl31          all | image | fetch | clean
 initramfs     all | image | busybox | clean
 fitimage      all | image | clean
 ```
@@ -260,7 +262,9 @@ Open the one that matches the task:
 | cmem / qos / PowerVR modules | `.claude/skills/rcar-customize-extmodules/SKILL.md` |
 | Initramfs, NVMe/USB boot | `.claude/skills/rcar-customize-initramfs/SKILL.md` |
 | Deploy to hardware | `.claude/skills/rcar-deploy-image/SKILL.md` |
+| Verify on a live board | `.claude/skills/rcar-verify-hardware/SKILL.md` |
 | Where do I start? | `.claude/skills/rcar-quick-start/SKILL.md` |
 
-Two have extra depth in a `references/` subdirectory: the device tree overlay
-registration walkthrough, and a line-by-line reading of `boot.cmd`.
+Three have extra depth in a `references/` subdirectory: the device tree overlay
+registration walkthrough, a line-by-line reading of `boot.cmd`, and the
+observed live-board verification baseline.

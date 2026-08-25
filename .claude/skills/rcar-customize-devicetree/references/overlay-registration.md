@@ -156,5 +156,5 @@ Stale `.dtbo`/`.dtb` files are **not** cleaned automatically — delete them fro
 a blob whose source is gone.
 
 Also remove any `#<name>` reference from `boot.cmd`
-(`/rcar-customize-boot`); selecting a configuration that no longer exists
+(`rcar-customize-boot`); selecting a configuration that no longer exists
 fails at boot.

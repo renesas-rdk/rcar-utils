@@ -1,7 +1,6 @@
 ---
 name: rcar-deploy-image
 description: Deploy a freshly built R-Car V4H Sparrow Hawk kernel to a running board over ssh — ask for the board IP/user/password, verify the build, back up what is on the board, rsync the fitImage/modules/firmware, reboot, and verify the board came back on the new kernel. Use when a build is finished and needs to reach hardware. Do NOT use to build artifacts or to edit boot.cmd.
-version: 0.0.1
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -124,6 +123,11 @@ the other variant and deploy again.
 In the normal rebooting flow, exit 0 only when step 8 is clean. `--dry-run` and
 `--no-reboot` intentionally exit successfully at their earlier stopping point.
 
+**Step 8 proves the board came back, not that the hardware works.** It checks
+`uname -r`, `modules.dep`, firmware and tree count — it never looks at the
+running device tree. After a device tree or overlay change, follow with
+`rcar-verify-hardware`.
+
 ## Why staging instead of rsync straight to /boot
 
 `--rsync-path="sudo rsync"` does **not** work with a password sudo: rsync's
@@ -158,7 +162,7 @@ whether it boots — restoring it over serial/U-Boot is the fastest recovery.
   `/usr/lib/modules/<release>/`, and `depmod` searches `/lib/modules`. Without
   the symlink `depmod` reports `could not open directory
   /lib/modules/<release>` and the deploy aborts at step 5.
-- Enough free space in the login user's home for the staging copy (~27 MB).
+- Enough free space in the login user's home for the staging copy (~35 MB: fitImage plus the module tree and firmware).
 
 ## Gotchas
 
@@ -191,7 +195,7 @@ load usb 0:1  ${loadaddr} /boot/fitImage && source ${loadaddr}:script
 ```
 
 Always **partition 1**, always `/boot/fitImage`, then the embedded boot script
-runs (`/rcar-customize-boot`).
+runs (`rcar-customize-boot`).
 
 On-target layout the script maintains:
 
@@ -217,7 +221,7 @@ filled in only from a module parameter, so without
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `rcar-driver.sh verify FAILED - not deploying` | Local build inconsistent | Fix it — see `/rcar-verify-build`. `--skip-verify` only if you know why |
+| `rcar-driver.sh verify FAILED - not deploying` | Local build inconsistent | Fix it — see `rcar-verify-build`. `--skip-verify` only if you know why |
 | `cannot ssh to ...` | Wrong IP/port/credentials | Check the board is up and the password is right |
 | `no root on the board` | User is not a sudoer, or wrong password | Use a sudo-capable account |
 | `depmod: could not open directory /lib/modules/...` | Rootfs not usrmerged | `sudo ln -sfn usr/lib /lib` on the board |
@@ -239,6 +243,8 @@ handling, verify gate, connect, sudo, backup (including backing up an existing
 fitImage on a second run), staged rsync, privileged install, `depmod`,
 checksum comparison, staging cleanup, and the down/up wait loop.
 
-**Never run against real Sparrow Hawk hardware in this session.** The `reboot`
-call itself and the on-target boot behaviour are unproven. Treat the first real
-run as a supervised one, with serial console to hand.
+Treat the first deployment of a new kernel, boot script, or device-tree change
+as supervised: run `--dry-run` first, confirm the backup and checksum stages,
+and keep serial recovery available before authorizing the reboot. Never deploy
+or reboot merely because this skill was selected; obtain explicit user
+confirmation immediately before the mutating command.

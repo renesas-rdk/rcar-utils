@@ -196,7 +196,7 @@ verify_overlays() {
 
 	local tmp o err n=0
 	tmp=$(mktemp -d)
-	# A .dtbo that no longer applies to the base DTB is only discovered when
+	# A staged .dtbo that no longer applies to the base DTB is only discovered when
 	# the board fails to boot with that overlay selected - it builds fine.
 	for o in "${FIT_OUTPUT_DIR}"/${BOARD_DTB}-*.dtbo; do
 		[ -e "$o" ] || continue

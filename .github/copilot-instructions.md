@@ -53,6 +53,11 @@ Both are plain bash and run from any cwd. No arguments prints usage.
   picking up fragment updates.
 - `boot.cmd` is a **U-Boot** script, not POSIX sh. There is no host-side syntax
   check; a typo becomes a boot failure.
+- A device-tree change is not verified until it has been checked on the board.
+  `rcar-driver.sh verify` is host-side only; what U-Boot actually selected is
+  in `/proc/device-tree/chosen/u-boot,bootconf`. See
+  `.claude/skills/rcar-verify-hardware/SKILL.md`, and always confirm the
+  hardware is plugged in before reading a missing overlay as a fault.
 - `workspace/` and `linux-sh/` are gitignored build output. Do not propose
   deleting anything there without asking.
 

@@ -187,6 +187,12 @@ stage_inputs() {
 	echo '|============================================|'
 	mkdir -p "${FIT_OUTPUT_DIR}" || exit 1
 
+	# This directory is reused by incremental builds. Remove previously staged
+	# Sparrow Hawk overlays so deleted or renamed entries cannot be mistaken for
+	# members of the newly assembled FIT by host-side verification.
+	find "${FIT_OUTPUT_DIR}" -maxdepth 1 -type f \
+		-name "${BOARD_DTB}-*.dtbo" -delete || exit 1
+
 	if [ ! -f "${KERNEL_DIR}/${KERNEL_IMAGE}" ]; then
 		echo "Error: kernel image not found: ${KERNEL_DIR}/${KERNEL_IMAGE}"
 		echo "       Run './main_build.sh fitimage all' to build it first."

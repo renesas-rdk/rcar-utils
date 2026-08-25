@@ -1,7 +1,6 @@
 ---
 name: rcar-verify-build
 description: Verify R-Car V4H Sparrow Hawk build artifacts without a board — assert the fitImage carries the current kernel, every device tree overlay still applies, modules.dep exists, and the initramfs holds the files the boot path needs. Use after any build or before deploying. Do NOT use to build, or to validate on a running board.
-version: 0.0.1
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -66,7 +65,7 @@ before believing the failure.
 | nodes `kernel-1`, `fdt-1`, `atf-1`, `ramdisk-1`, `script` present | every FIT config loads BL31; `boot.cmd` needs the initramfs config for non-MMC boot |
 | ≥2 FIT configurations | overlays not exposed as selectable configs |
 | fitImage kernel size == `linux-sh` `Image` size | **stale fitImage** — the board boots the previous kernel |
-| every `.dtbo` applies to the base DTB via `fdtoverlay` | broken overlay; only shows at boot, only with that overlay selected |
+| every currently staged FIT `.dtbo` applies to the base DTB via `fdtoverlay` | broken overlay; only shows at boot, only with that overlay selected |
 | `modules.dep` present and non-empty | `depmod` missing — nothing modprobes on the board |
 | exactly one tree under `usr/lib/modules` | stale tree from an older kernel gets deployed too |
 | module tree matches the built kernel release | modules belong to a different kernel |
@@ -78,7 +77,7 @@ before believing the failure.
 ## Reading the output
 
 ```
-[FAIL]  fitImage kernel is STALE: tree=23976448 vs fit=21297664
+  FAIL  fitImage kernel is STALE: tree=23976448 vs fit=21297664
         Re-assemble it: rcar-driver.sh build fitimage image
 ```
 
@@ -89,7 +88,7 @@ Every `FAIL` prints the fixing command. Common ones:
 | `fitImage kernel is STALE` | `rcar-driver.sh build fitimage image` |
 | `modules.dep missing or empty` | `sudo apt-get install -y kmod`, then `rcar-driver.sh build kernel modules-install` |
 | `stale module tree: <ver>` | `rm -rf` the path it prints (it is build output — confirm before deleting) |
-| `does NOT apply: <name>.dtbo` + `FDT_ERR_NOTFOUND` | The overlay's target node is gone from the base DTB — see `/rcar-customize-devicetree` |
+| `does NOT apply: <name>.dtbo` + `FDT_ERR_NOTFOUND` | The overlay's target node is gone from the base DTB — see `rcar-customize-devicetree` |
 | `no module tree for the built kernel <ver>` | `rcar-driver.sh build kernel modules-install` |
 | `external module ... missing` | `rcar-driver.sh build ext-modules install` |
 | `fdtoverlay not installed` | `sudo apt-get install -y device-tree-compiler` |
@@ -106,6 +105,14 @@ Every `FAIL` prints the fixing command. Common ones:
   behaviour is tested.
 - **Nothing checks against the board's real U-Boot environment.** Load
   addresses are taken from `config.ini`, not read from the target.
+- **Verification follows the FIT staging directory.** Reassembling the FIT
+  removes obsolete Sparrow Hawk `.dtbo` files before staging the current list,
+  preventing deleted overlays from creating false passes or failures.
+
+Everything above is by design: this skill runs without a board. Once a build is
+on hardware, `rcar-verify-hardware` covers what is listed here as impossible —
+which FIT configuration U-Boot chose, whether the overlay's nodes reached the
+running device tree, and whether a driver bound.
 
 ## Extending
 

@@ -1,7 +1,6 @@
 ---
 name: rcar-setup-workspace
 description: Prepare a machine to build rcar-utils for the R-Car V4H Sparrow Hawk — install host packages, clone the linux-sh kernel source, and run a toolchain preflight. Use on a fresh container/host or when a build fails on a missing tool. Do NOT use for building, kernel config edits, or deploying to the board.
-version: 0.0.1
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -21,8 +20,8 @@ Shared facts: `AGENTS.md` at the repo root.
 
 ## Prerequisites
 
-Ubuntu. **Verified on 22.04**, despite `local-build-scripts/README.md` asking
-for 24.04 — nothing required 24.04.
+Ubuntu. **Verified on 24.04**, matching `local-build-scripts/README.md` and
+`AGENTS.md`.
 
 ## Procedure
 
@@ -96,4 +95,4 @@ workspace. Warm rebuild time depends mostly on the external modules.
 
 ## Next
 
-`/rcar-build` to build, `/rcar-quick-start` if you are not sure what you need.
+`rcar-build` to build, `rcar-quick-start` if you are not sure what you need.

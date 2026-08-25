@@ -1,7 +1,6 @@
 ---
 name: rcar-print-build-info
 description: Print a host-side summary of the current rcar-utils build state for the R-Car V4H Sparrow Hawk — resolved paths plus which key artifacts exist, their sizes, and mtimes. Also provides commands for inspecting the kernel release and fitImage contents. Use to answer "what is built right now?" before deciding what to rebuild. Do NOT use to build or to assert correctness — that is rcar-verify-build.
-version: 0.0.1
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -15,7 +14,7 @@ metadata:
 
 Read-only snapshot of the workspace. Answers "what is built, how old is it,
 where did it go" without building or judging. For pass/fail use
-`/rcar-verify-build`.
+`rcar-verify-build`.
 
 Shared facts: `AGENTS.md` at the repo root.
 
@@ -39,7 +38,7 @@ Artifacts
 ```
 
 Reading it: if `Image` is **newer** than `fitImage`, the FIT is stale — see
-`/rcar-build`. `rcar-driver.sh verify` confirms.
+`rcar-build`. `rcar-driver.sh verify` confirms.
 
 ## Other useful one-liners
 

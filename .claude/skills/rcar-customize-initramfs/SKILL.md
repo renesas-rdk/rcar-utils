@@ -1,7 +1,6 @@
 ---
 name: rcar-customize-initramfs
 description: Change the R-Car V4H Sparrow Hawk initramfs (uInitramfs.cpio.gz) — the init script, the busybox configuration, the bundled PCIe driver and PHY firmware. Use when booting from NVMe/USB fails, or to add a tool or firmware blob to the early boot environment. Do NOT use for the real rootfs, kernel config, or overlay selection.
-version: 0.0.1
 license: "Apache-2.0"
 metadata:
   data-classification: public

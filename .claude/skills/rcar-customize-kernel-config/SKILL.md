@@ -1,7 +1,6 @@
 ---
 name: rcar-customize-kernel-config
 description: Change Linux kernel config options for the R-Car V4H Sparrow Hawk — edit sparrow_hawk_defconfig or the sparrow_hawk.config fragment, add a KERNEL_VARIANT fragment such as the PREEMPT_RT one, use menuconfig, and understand how a hand-edited .config is preserved or discarded. Use to enable/disable a driver or kernel feature. Do NOT use for device tree overlays, out-of-tree modules, or boot.cmd.
-version: 0.0.1
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -27,7 +26,7 @@ Every kernel target configures first through `build_kernel.sh` and
 
 1. `arch/arm64/configs/sparrow_hawk_defconfig` and
    `arch/arm64/configs/sparrow_hawk.config` are **concatenated** into a temp
-   file (`/tmp/rcar-merged-config.XXXXXX`).
+   file (`mktemp -t rcar-merged-config.XXXXXX`, so `$TMPDIR` or `/tmp`).
 2. Two lines are appended last, so they always win:
    `CONFIG_LOCALVERSION_AUTO=n` and
    `CONFIG_LOCALVERSION="${KERNEL_LOCALVERSION}"` (default `-arm64-renesas`).
@@ -75,7 +74,7 @@ Two things to know before writing one:
   It becomes the module directory name and `uname -r`; underscores and other
   punctuation trip up downstream tooling that consumes the release string.
 
-Building one is `/rcar-build`'s job - see *Run: the PREEMPT_RT kernel* in
+Building one is `rcar-build`'s job - see *Run: the PREEMPT_RT kernel* in
 `.claude/skills/rcar-build/SKILL.md`.
 
 ## Choosing where to make the change
@@ -99,9 +98,16 @@ Edit the fragment, then rebuild — the generated `.config` is refreshed
 automatically because it still matches the stamp:
 
 ```bash
-./scripts/rcar-driver.sh build kernel modules
+./scripts/rcar-driver.sh build kernel modules-install
+./scripts/rcar-driver.sh build ext-modules install
+./scripts/rcar-driver.sh build initramfs all
+./scripts/rcar-driver.sh build fitimage image
 ./scripts/rcar-driver.sh verify
 ```
+
+Do not stop after the in-tree modules. Kernel configuration can change module
+ABI and the PCIe module copied into the initramfs, so external modules and the
+initramfs must be rebuilt before the FIT is reassembled.
 
 Confirm the symbol landed:
 
@@ -147,7 +153,7 @@ that directory ships both. `rcar-driver.sh verify` flags the stale tree.
 - **`m` vs `y` changes the deploy surface.** A driver built `=m` must be
   installed (`kernel modules-install`) and needs `modules.dep`; `=y` does not.
   Switching `PCIE_RCAR_GEN4` to `=y` would make the initramfs copy of
-  `pcie-rcar-gen4.ko` dead weight — see `/rcar-customize-initramfs`.
+  `pcie-rcar-gen4.ko` dead weight — see `rcar-customize-initramfs`.
 - **`alldefconfig` silently drops an option whose dependencies are unmet.** If
   a symbol you added is absent from `.config` afterwards, check its `depends
   on` — there is no error.

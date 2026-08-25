@@ -1,7 +1,6 @@
 ---
 name: rcar-customize-extmodules
 description: Add, patch, or re-pin the out-of-tree kernel modules built for the R-Car V4H Sparrow Hawk — cmemdrv, qos, and the PowerVR GPU driver (gles/pvrsrvkm). Use to bump a module revision, add a patch, or register a new external module. Do NOT use for in-tree kernel modules (rcar-customize-kernel-config) or device tree changes.
-version: 0.0.1
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -22,8 +21,8 @@ upstream, pins, patches, builds, and installs:
 | `qos` | `github.com/renesas-rcar/qos_drv.git` | `QOS_SRCREV` | `extra/` |
 | `gles` | PowerVR tarball from `rcar-community/rcar-gfx` | `GLES_SHA256` | `extra/` |
 
-`qos` is marked *"Unsupported for now"* in `config.ini`, but it is in the build
-table and does build.
+`qos` is marked *"Unsupported for now"* in `local-build-scripts/README.md`, but
+it is in the build table and does build.
 
 Shared facts: `AGENTS.md` at the repo root.
 

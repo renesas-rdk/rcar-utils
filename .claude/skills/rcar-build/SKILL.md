@@ -1,7 +1,6 @@
 ---
 name: rcar-build
 description: Build any rcar-utils target for the R-Car V4H Sparrow Hawk — kernel Image/dtbs/modules, out-of-tree modules (cmem/qos/gles), TF-A BL31, initramfs, and the U-Boot fitImage. Also builds the PREEMPT_RT (real-time) variant kernel via KERNEL_VARIANT. Use to build or rebuild after a source change. Do NOT use for editing kernel config, device trees, or boot.cmd — those have their own customize skills.
-version: 0.0.1
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -21,7 +20,7 @@ Shared facts: `AGENTS.md` at the repo root.
 
 ## Prerequisites
 
-`/rcar-setup-workspace` has run (`rcar-driver.sh preflight` exits 0).
+`rcar-setup-workspace` has run (`rcar-driver.sh preflight` exits 0).
 
 ## Always build through the driver
 
@@ -70,7 +69,7 @@ usable - the variant needs its own workspace and each step needs
 ```
 
 Every target configures the kernel first (defconfig + fragment). See
-`/rcar-customize-kernel-config` for how a hand-edited `.config` is preserved.
+`rcar-customize-kernel-config` for how a hand-edited `.config` is preserved.
 
 **`modules-install` exits 0 even when it did not finish.** Without `depmod` it
 warns and returns success with no `modules.dep`. Always confirm:
@@ -125,7 +124,7 @@ they inspect the stock workspace and report the variant's kernel as stale.
 
 The build leaves the variant's artifacts in `$WORKSPACE_DIR/fitimage/` and
 `$WORKSPACE_DIR/kernel-modules/usr/`. To put them on a board, keep
-`WORKSPACE_DIR` exported and use `/rcar-deploy-image`.
+`WORKSPACE_DIR` exported and use `rcar-deploy-image`.
 
 ### Confirm it really is RT
 
@@ -146,9 +145,15 @@ device-tree overlays staged in the workspace.
 
 ```bash
 ./scripts/rcar-driver.sh build kernel modules-install
+./scripts/rcar-driver.sh build ext-modules install
+./scripts/rcar-driver.sh build initramfs all
 ./scripts/rcar-driver.sh build fitimage image     # separate target - see below
 ./scripts/rcar-driver.sh verify
 ```
+
+The external modules and the PCIe module bundled into the initramfs are built
+against the kernel. Rebuilding only the kernel and FIT can leave ABI-stale
+modules while still producing an image, so do not omit those two steps.
 
 ### Back to the stock kernel
 
@@ -199,12 +204,12 @@ diff <(sort /tmp/variant.config) <(sort linux-sh/.config)
 
 Requires a built kernel — it checks for `linux-sh/Module.symvers` and tells you
 to run `kernel modules` first. Builds cmem, qos and gles (PowerVR). See
-`/rcar-customize-extmodules` to add or patch one.
+`rcar-customize-extmodules` to add or patch one.
 
 ## Run: bl31
 
 ```bash
-./scripts/rcar-driver.sh build bl31 all
+./scripts/rcar-driver.sh build bl31 all      # 'image' is an alias for 'all'
 ./scripts/rcar-driver.sh build bl31 fetch
 ./scripts/rcar-driver.sh build bl31 clean
 ```
@@ -220,6 +225,8 @@ needs it. Produces `bl31-sparrow-hawk.{bin,elf,srec}` in
 ./scripts/rcar-driver.sh build initramfs busybox  # static busybox only
 ./scripts/rcar-driver.sh build initramfs clean
 ```
+
+`initramfs image` is an alias for `all`.
 
 Only needed to boot a rootfs that is **not** on eMMC/SD — `boot.cmd` selects
 the `#initramfs` FIT configuration when the boot device is not `mmcblk`.
@@ -248,7 +255,7 @@ build" — those are taken as-is and never rebuilt here.
 ```
 
 Non-negotiable: three of this build's failure modes exit 0. See
-`/rcar-verify-build`.
+`rcar-verify-build`.
 
 ## Timings
 
