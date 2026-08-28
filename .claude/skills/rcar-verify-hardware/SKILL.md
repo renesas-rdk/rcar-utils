@@ -443,10 +443,3 @@ so it belongs in the result.
 Serial console setup, U-Boot recovery, and building the Ubuntu rootfs — those
 live in `../ubuntu_installer/` (`QuickStartGuide.md`), a separate repo that may
 not be present if `rcar-utils` was cloned on its own.
-
-## Observed hardware baseline
-
-Measured results and the still-unverified hardware paths are kept in
-[references/verified-hardware.md](references/verified-hardware.md). Treat them
-as evidence from a specific board and firmware version, not universal pass
-criteria.
