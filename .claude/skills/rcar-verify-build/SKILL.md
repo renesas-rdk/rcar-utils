@@ -46,7 +46,8 @@ FIT_OUTPUT_DIR=/tmp/other-fit ./scripts/rcar-driver.sh verify
 `verify` reads `WORKSPACE_DIR`, so point it at the variant's workspace:
 
 ```bash
-WORKSPACE_DIR=$PWD/workspace-preempt-rt ./scripts/rcar-driver.sh verify
+WORKSPACE_DIR=$(ls -d "$PWD"/workspace-*/ | head -1) \
+    ./scripts/rcar-driver.sh verify
 ```
 
 It compares the fitImage against `linux-sh/arch/arm64/boot/Image`, and the two

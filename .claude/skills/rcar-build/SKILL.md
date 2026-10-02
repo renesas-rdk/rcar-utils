@@ -97,6 +97,8 @@ on the board.
 **The two variants take turns in `linux-sh/`.** The kernel tree is shared;
 only the outputs are separated, and only if you separate them. Give the variant
 its own `WORKSPACE_DIR` or it overwrites the stock fitImage and initramfs.
+The name is free - `.gitignore` globs `/workspace-*/` - so match whatever the
+repo already uses instead of inventing a second one.
 
 ### Full RT build
 
@@ -104,7 +106,11 @@ its own `WORKSPACE_DIR` or it overwrites the stock fitImage and initramfs.
 cd <rcar-utils>
 
 export KERNEL_VARIANT=preempt-rt
-export WORKSPACE_DIR=$PWD/workspace-preempt-rt
+
+# Reuse the variant workspace if one already exists - building into a new name
+# duplicates the whole tree and leaves two RT workspaces to tell apart:
+ls -d "$PWD"/workspace-*/ 2>/dev/null       # e.g. workspace-rt/
+export WORKSPACE_DIR=$PWD/workspace-rt      # or the name that printed above
 export DOWNLOAD_DIR=$PWD/workspace/downloads   # reuse the checksum-verified cache
 export BL31_BIN=$PWD/workspace/arm-trusted-firmware/release/bl31-sparrow-hawk.bin
 
@@ -140,6 +146,33 @@ strings $WORKSPACE_DIR/fitimage/Image | grep -m1 'Linux version'
 
 `verify` must report **0 failed**. The pass count varies with the number of
 device-tree overlays staged in the workspace.
+
+### RT changes driver behaviour, not just latency
+
+Neither check above says anything about run time, and a clean build plus a
+clean `verify` is compatible with a kernel that warns on every boot. Under
+`CONFIG_PREEMPT_RT` any handler registered without `IRQF_NO_THREAD`,
+`IRQF_PERCPU` or `IRQF_ONESHOT` is *force-threaded* - it runs in a kthread with
+hardirqs enabled rather than in hardirq context. Drivers that were correct on
+the stock kernel can break that way, and interrupt-controller demux handlers
+are the common case: dispatching a child interrupt from thread context trips
+
+```
+irq N handler <fn> enabled interrupts
+WARNING: ... __handle_irq_event_percpu
+```
+
+It is a `WARN_ONCE`, so it costs one line per boot and is easy to miss. After
+booting a new RT kernel, read the log before assuming the variant is healthy:
+
+```bash
+dmesg | grep -iE 'enabled interrupts|__handle_irq_event'
+```
+
+Nothing back is the expected result. A hit is a real defect - the flow handler
+takes `desc->lock` with a plain `raw_spin_lock()` that assumes hardirqs are
+off - not RT noise to be filtered out. The fix belongs in the offending
+driver's `request_irq` flags, not in the RT fragment.
 
 ### Incremental, after a kernel source change
 

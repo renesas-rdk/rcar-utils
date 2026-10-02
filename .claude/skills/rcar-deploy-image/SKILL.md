@@ -33,8 +33,7 @@ The script needs a board to talk to. Ask for, in one go:
 | Password | `ubuntu` | stock image default |
 | SSH port | `22` | rarely changed |
 
-Confirm the defaults rather than assuming them — a board that has been through
-`ubuntu_installer` may have had its password changed.
+Confirm the defaults rather than assuming them.
 
 **This is a destructive, outward-facing action**: it overwrites `/boot` and
 `/usr/lib/modules` on the board and reboots it. Confirm with the user before
@@ -83,7 +82,7 @@ Options:
 way - export it, and the script picks up that fitImage and that module tree:
 
 ```bash
-export WORKSPACE_DIR=$PWD/workspace-preempt-rt
+export WORKSPACE_DIR=$PWD/workspace-rt   # the variant workspace it was built into
 ./scripts/rcar-deploy.sh --host <board-ip> --dry-run
 ./scripts/rcar-deploy.sh --host <board-ip>
 ```
@@ -150,6 +149,30 @@ The module tree is kept beside it as `modules-<release>.tar.gz`, and
 
 If the board does not come back, `/boot/fitImage` is the only file that decides
 whether it boots — restoring it over serial/U-Boot is the fastest recovery.
+
+### Getting on the serial console
+
+ssh is gone in exactly the case you need it, so this is the only way in. The
+board exposes **two** USB serial ports over one Type-B cable; on Linux they
+appear as `/dev/ttyUSB0` and `/dev/ttyUSB1`:
+
+| Port | Baud | Notes |
+|---|---|---|
+| lower | `921600` | the one a Linux host normally talks to |
+| upper | `115200` | a Windows host normally talks to this one |
+
+If no boot log appears on one, try the other — the mapping to `ttyUSB0` /
+`ttyUSB1` is not fixed.
+
+```bash
+minicom -D /dev/ttyUSB0 -b 921600      # Ctrl-A X to quit
+```
+
+The login user must be in `dialout` (`id -nG | grep dialout`); otherwise this
+fails with a permission error on the device node. Only one process may hold the
+port — a stray reader (`cat /dev/ttyUSB0`, a previous `minicom`) makes the next
+attempt open a dead terminal rather than reporting a conflict. Check with
+`fuser -v /dev/ttyUSB0` and kill the holder before blaming the board.
 
 ## Requirements
 
@@ -233,8 +256,7 @@ filled in only from a module parameter, so without
 ## Not covered
 
 Serial console setup, U-Boot recovery, partitioning, and building the Ubuntu
-rootfs. Those live in `../ubuntu_installer/` (`QuickStartGuide.md`) — a
-separate repo that may not be present if `rcar-utils` was cloned on its own.
+rootfs.
 
 ## Verified vs not
 

@@ -90,7 +90,8 @@ that was fine.
 - Board reachable over ssh; the login user is a sudoer.
 - Host: `sshpass`, `ssh`. Board: `dtc` helps but is not required.
 - Serial console is optional for normal verification and recommended when an
-  expected overlay is absent from `bootconf`.
+  expected overlay is absent from `bootconf`. How to attach (ports, baud,
+  `dialout`): `rcar-deploy-image` → *Getting on the serial console*.
 - Hardware confirmed per the gate above.
 
 ## Connect
@@ -440,6 +441,5 @@ so it belongs in the result.
 
 ## Not covered
 
-Serial console setup, U-Boot recovery, and building the Ubuntu rootfs — those
-live in `../ubuntu_installer/` (`QuickStartGuide.md`), a separate repo that may
-not be present if `rcar-utils` was cloned on its own.
+U-Boot recovery, partitioning, and building the Ubuntu rootfs. For attaching to
+the serial console, see `rcar-deploy-image` → *Getting on the serial console*.
