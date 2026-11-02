@@ -146,7 +146,7 @@ KERNEL_MODULES_OUTPUT_DIR=/tmp/mods ./scripts/rcar-driver.sh build kernel module
 Pinned inputs live here too: `CMEM_SRCREV`, `QOS_SRCREV`, `GLES_SHA256`,
 `TFA_SRCREV`, `BUSYBOX_SHA256`, `PCIE_FW_SHA256`, plus
 `FIT_KERNEL_LOADADDR=0x50200000` / `FIT_ATF_LOADADDR=0x46400000` and
-`KERNEL_LOCALVERSION=-arm64-renesas`.
+`KERNEL_LOCALVERSION=-rcarv4h-sh`.
 
 ## Kernel variants
 
@@ -158,7 +158,7 @@ override anything the board configuration set - including
 
 | Variant | Kernel release | What it changes |
 |---|---|---|
-| `preempt-rt` | `<version>-arm64-renesas-rt` | `CONFIG_PREEMPT_RT=y` (fully preemptible real-time) |
+| `preempt-rt` | `<version>-rcarv4h-sh-rt` | `CONFIG_PREEMPT_RT=y` (fully preemptible real-time) |
 
 Give a variant its own `WORKSPACE_DIR`, or it overwrites the stock build's
 fitImage and initramfs:

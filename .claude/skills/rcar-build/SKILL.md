@@ -92,7 +92,7 @@ on the board.
 
 | Variant | Kernel release | What it changes |
 |---|---|---|
-| `preempt-rt` | `<version>-arm64-renesas-rt` | `CONFIG_PREEMPT_RT=y` — fully preemptible real-time |
+| `preempt-rt` | `<version>-rcarv4h-sh-rt` | `CONFIG_PREEMPT_RT=y` — fully preemptible real-time |
 
 **The two variants take turns in `linux-sh/`.** The kernel tree is shared;
 only the outputs are separated, and only if you separate them. Give the variant
@@ -138,7 +138,7 @@ A green build is not proof of the preemption model. Check both:
 
 ```bash
 cat linux-sh/include/config/kernel.release
-#  → 6.18.39-arm64-renesas-rt
+#  → 6.18.39-rcarv4h-sh-rt
 
 strings $WORKSPACE_DIR/fitimage/Image | grep -m1 'Linux version'
 #  → ... # SMP PREEMPT_RT          <- the part that matters
@@ -325,4 +325,4 @@ a top-up.
 | `Error: unknown KERNEL_VARIANT '<x>'` | Typo; the error lists the valid names (fragments in `local-build-scripts/kernel-config/`) |
 | `verify` says STALE *and* `no module tree for the built kernel` | `linux-sh/` holds the other variant; re-run the build for the variant you are checking |
 | Variant build overwrote the stock fitImage | `WORKSPACE_DIR` was not set; it is not optional for a variant |
-| Variant kernel came out as `-arm64-renesas` | `KERNEL_VARIANT` not exported for that command — every `build` call needs it |
+| Variant kernel came out as `-rcarv4h-sh` | `KERNEL_VARIANT` not exported for that command — every `build` call needs it |

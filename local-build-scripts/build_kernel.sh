@@ -110,7 +110,7 @@ mk_config_merged() {
 	# Last assignment wins, so pin the local version here.
 	{
 		echo "CONFIG_LOCALVERSION_AUTO=n"
-		echo "CONFIG_LOCALVERSION=\"${KERNEL_LOCALVERSION:--arm64-renesas}\""
+		echo "CONFIG_LOCALVERSION=\"${KERNEL_LOCALVERSION:--rcarv4h-sh}\""
 	} >> "${merged}"
 	# The variant fragment goes last of all: it is meant to override the board
 	# configuration, and its CONFIG_LOCALVERSION has to beat the one just

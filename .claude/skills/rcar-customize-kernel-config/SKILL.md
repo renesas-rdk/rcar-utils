@@ -29,7 +29,7 @@ Every kernel target configures first through `build_kernel.sh` and
    file (`mktemp -t rcar-merged-config.XXXXXX`, so `$TMPDIR` or `/tmp`).
 2. Two lines are appended last, so they always win:
    `CONFIG_LOCALVERSION_AUTO=n` and
-   `CONFIG_LOCALVERSION="${KERNEL_LOCALVERSION}"` (default `-arm64-renesas`).
+   `CONFIG_LOCALVERSION="${KERNEL_LOCALVERSION}"` (default `-rcarv4h-sh`).
 3. `make KCONFIG_ALLCONFIG=<merged> alldefconfig` fills in every other symbol.
 
 **Last assignment wins.** The fragment overrides the defconfig, which is what
@@ -61,7 +61,7 @@ fragment and the `CONFIG_LOCALVERSION` lines - so it overrides all of them and
 can give the kernel its own `uname -r`.
 
 `preempt-rt` ships today: `CONFIG_PREEMPT_RT=y`, release
-`<version>-arm64-renesas-rt`.
+`<version>-rcarv4h-sh-rt`.
 
 Two things to know before writing one:
 
@@ -140,7 +140,7 @@ To go back to the board configuration and throw local changes away:
 
 ## Changing the module suffix
 
-`KERNEL_LOCALVERSION` in `config.ini` (default `-arm64-renesas`) becomes the
+`KERNEL_LOCALVERSION` in `config.ini` (default `-rcarv4h-sh`) becomes the
 `uname -r` suffix and therefore the **module install path**
 `/usr/lib/modules/<version><suffix>/`.
 
