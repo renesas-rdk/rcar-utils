@@ -1,0 +1,24 @@
+{
+    "license": {
+        "copyright": "Copyright (c) 2023-2026, Renesas Electronics Corporation. All rights reserved.",
+        "spdx-license-identifier": "MIT"
+    },
+    "flash_writer": {
+        "sparrow-hawk":     "Flash_writer_sparrow_hawk_CR52.mot"
+    },
+
+    "ipl": {
+        "sparrow-hawk": [
+            {
+                "name":       "flash.bin",
+                "flash_addr": "0",
+                "write_sel":  "Flash"
+            },
+            {
+                "name":       "rcar_gen4_pcie.bin",
+                "flash_addr": "0x300000",
+                "write_sel":  "Flash"
+            }
+        ]
+    }
+}

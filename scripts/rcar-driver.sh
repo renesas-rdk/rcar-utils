@@ -32,6 +32,8 @@ SCRIPTS_DIR="${RCAR_UTILS_DIR}/local-build-scripts"
 KERNEL_DIR="${KERNEL_DIR:-${RCAR_UTILS_DIR}/linux-sh}"
 WORKSPACE_DIR="${WORKSPACE_DIR:-${RCAR_UTILS_DIR}/workspace}"
 FIT_OUTPUT_DIR="${FIT_OUTPUT_DIR:-${WORKSPACE_DIR}/fitimage}"
+UBOOT_SRC_DIR="${UBOOT_SRC_DIR:-${WORKSPACE_DIR}/u-boot}"
+IPL_OUTPUT_DIR="${IPL_OUTPUT_DIR:-${WORKSPACE_DIR}/ipl-burning}"
 KERNEL_MODULES_OUTPUT_DIR="${KERNEL_MODULES_OUTPUT_DIR:-${WORKSPACE_DIR}/kernel-modules}"
 TFA_SRC_DIR="${TFA_SRC_DIR:-${WORKSPACE_DIR}/arm-trusted-firmware}"
 TFA_OUTPUT_DIR="${TFA_OUTPUT_DIR:-${TFA_SRC_DIR}/release}"
@@ -71,6 +73,23 @@ do_preflight() {
 		note "leaving no modules.dep. Fix: sudo apt-get install -y kmod"
 	fi
 
+	# Only the ipl target needs these, so a missing one does not fail a kernel
+	# build's preflight. build_ipl.sh refuses to start without them.
+	head_ "Host tools for the ipl target"
+	local ipl_missing=0
+	for t in swig srec_cat unzip patch python3; do
+		if command -v "$t" >/dev/null 2>&1; then
+			ok "$t"
+		else
+			note "$t not found"
+			ipl_missing=1
+		fi
+	done
+	if [ "$ipl_missing" -ne 0 ]; then
+		note "Fix: sudo apt-get install -y swig srecord unzip patch \\"
+		note "         python3-dev python3-pyelftools python3-setuptools"
+	fi
+
 	head_ "Sources"
 	if [ -f "${KERNEL_DIR}/Makefile" ] && [ -d "${KERNEL_DIR}/arch/arm64" ]; then
 		ok "kernel source at ${KERNEL_DIR}"
@@ -92,7 +111,7 @@ do_preflight() {
 do_build() {
 	if [ $# -lt 2 ]; then
 		echo "usage: rcar-driver.sh build <target> <sub_command>" >&2
-		echo "  targets: kernel ext-modules bl31 initramfs fitimage" >&2
+		echo "  targets: kernel ext-modules bl31 initramfs fitimage ipl" >&2
 		return 2
 	fi
 	head_ "Build: $1 $2"
@@ -326,6 +345,109 @@ verify_bl31() {
 	fi
 }
 
+verify_ipl() {
+	head_ "IPL burning package"
+	local out="${IPL_OUTPUT_DIR}"
+	if [ ! -d "$out" ]; then
+		note "no IPL package built (only needed to write the board's QSPI flash)"
+		return
+	fi
+
+	local f missing=0
+	for f in burn.py ipl_burning.py ipl_burning.json run.sh run.bat flash.bin \
+	         Flash_writer_sparrow_hawk_CR52.mot rcar_gen4_pcie.bin LICENSE-index.txt \
+	         License/LICENSE.MIT License/LICENSE.BSD-3-Clause \
+	         License/LICENCE.r8a779g_pcie_phy License/u-boot_licenses/README \
+	         License/u-boot_licenses/generic_GPL-2.0-or-later \
+	         python-embed-amd64/python.exe python-embed-amd64/get-pip.py; do
+		if [ ! -f "${out}/${f}" ]; then
+			bad "missing ${f}"
+			missing=1
+		fi
+	done
+	[ "$missing" -eq 0 ] && ok "all package files present"
+
+	local flash="${out}/flash.bin"
+	if [ ! -f "$flash" ]; then
+		note "run: rcar-driver.sh build ipl all"
+		return
+	fi
+
+	# The burning tool writes the PCIe firmware at 0x300000, right after this.
+	local size
+	size=$(stat -c%s "$flash")
+	if [ "$size" -le $((0x300000)) ]; then
+		ok "flash.bin stays below the PCIe firmware at 0x300000 (${size} bytes)"
+	else
+		bad "flash.bin is ${size} bytes and overlaps the PCIe firmware at 0x300000"
+	fi
+
+	# Installing the package is a separate step from building U-Boot, so an
+	# interrupted build can leave the previous flash.bin in place.
+	local built="${UBOOT_SRC_DIR}/build/flash.bin"
+	if [ -f "$built" ]; then
+		if cmp -s "$built" "$flash"; then
+			ok "flash.bin is the current U-Boot build"
+		else
+			bad "flash.bin differs from the U-Boot build at ${built}"
+			note "run: rcar-driver.sh build ipl all"
+		fi
+	fi
+
+	# CONFIG_SYS_SPI_U_BOOT_OFFS: SPL loads this FIT, so without it the board
+	# stops after SPL. Nothing else looks inside flash.bin before it is written.
+	local tmp listing n
+	tmp=$(mktemp)
+	tail -c +$((0x80001)) "$flash" > "$tmp"
+	if listing=$(mkimage -l "$tmp" 2>&1); then
+		for n in uboot fdt-1; do
+			if grep -q "($n)" <<<"$listing"; then
+				ok "U-Boot FIT at 0x80000 has image node ${n}"
+			else
+				bad "U-Boot FIT at 0x80000 has no image node ${n}"
+			fi
+		done
+	else
+		bad "no parseable U-Boot FIT at offset 0x80000 of flash.bin"
+	fi
+	rm -f "$tmp"
+
+	# A board flashed without this environment has no way to find the fitImage,
+	# and U-Boot builds fine without it.
+	local v
+	for v in 'bootcmd=run autoconf_mmc' 'autoconf_nvme=' 'renesas_rcar_gen4_load_firmware='; do
+		if grep -aqF "$v" "$flash"; then
+			ok "environment has ${v%%=*}"
+		else
+			bad "environment has no ${v%%=*}; flash.bin would not boot the board"
+		fi
+	done
+
+	# U-Boot reads a fixed 0x8000 bytes (set_pcie_firmware_info).
+	local fw="${out}/rcar_gen4_pcie.bin" want
+	want=$(sed -n 's/^PCIE_FW_SHA256=//p' "${SCRIPTS_DIR}/config.ini")
+	if [ -f "$fw" ]; then
+		if [ "$(sha256sum "$fw" | cut -d' ' -f1)" = "$want" ]; then
+			ok "PCIe firmware matches the pinned checksum"
+		else
+			bad "rcar_gen4_pcie.bin does not match PCIE_FW_SHA256"
+		fi
+		if [ "$(stat -c%s "$fw")" -eq $((0x8000)) ]; then
+			ok "PCIe firmware is the 0x8000 bytes U-Boot reads"
+		else
+			bad "rcar_gen4_pcie.bin is not 0x8000 bytes"
+		fi
+	fi
+
+	# run.bat cannot install pip without "import site" enabled. The ._pth comes
+	# from a Windows zip, so its lines end in CRLF.
+	if grep -q '^import site' "${out}"/python-embed-amd64/*._pth 2>/dev/null; then
+		ok "embedded Python has site enabled"
+	else
+		bad "embedded Python ._pth does not enable site; run.bat cannot install pip"
+	fi
+}
+
 do_verify() {
 	verify_kernel
 	verify_fitimage
@@ -333,6 +455,7 @@ do_verify() {
 	verify_modules
 	verify_initramfs
 	verify_bl31
+	verify_ipl
 
 	head_ "Result"
 	printf '  %d passed, %d failed\n\n' "$PASS" "$FAIL"
@@ -354,7 +477,8 @@ do_info() {
 	         "${FIT_OUTPUT_DIR}/fitImage" \
 	         "${FIT_OUTPUT_DIR}/${BOARD_DTB}.dtb" \
 	         "${FIT_OUTPUT_DIR}/uInitramfs.cpio.gz" \
-	         "${TFA_OUTPUT_DIR}/bl31-sparrow-hawk.bin"; do
+	         "${TFA_OUTPUT_DIR}/bl31-sparrow-hawk.bin" \
+	         "${IPL_OUTPUT_DIR}/flash.bin"; do
 		if [ -f "$f" ]; then
 			printf '  %-12s %10s  %s\n' "$(stat -c%y "$f" | cut -d. -f1 | cut -d' ' -f2)" \
 				"$(stat -c%s "$f")" "${f#"${RCAR_UTILS_DIR}"/}"

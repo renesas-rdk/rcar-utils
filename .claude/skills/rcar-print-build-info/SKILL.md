@@ -35,6 +35,7 @@ Artifacts
   06:57:39          69344  workspace/fitimage/r8a779g3-sparrow-hawk.dtb
   06:57:39        1201714  workspace/fitimage/uInitramfs.cpio.gz
   06:54:39         131172  workspace/arm-trusted-firmware/release/bl31-sparrow-hawk.bin
+  16:39:40        2278951  workspace/ipl-burning/flash.bin
 ```
 
 Reading it: if `Image` is **newer** than `fitImage`, the FIT is stale — see

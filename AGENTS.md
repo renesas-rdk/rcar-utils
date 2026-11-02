@@ -5,7 +5,8 @@ in this repo. Humans: this doubles as the orientation doc.
 
 Standalone build and deployment scripts for the **R-Car V4H Sparrow Hawk**
 (`PLATFORM=RCAR-V4H-SH`, SoC `r8a779g3`). They produce the kernel, modules,
-firmware, initramfs, TF-A BL31, and U-Boot `fitImage` directly from source.
+firmware, initramfs, TF-A BL31, U-Boot `fitImage`, and the IPL burning package
+(`flash.bin`) directly from source.
 Branch `ubuntu/rcar-v4h-sh` is trimmed to the Sparrow Hawk build only.
 
 ## Two entry points — use these, not raw make
@@ -72,6 +73,10 @@ REL=$(cat linux-sh/include/config/kernel.release)
 # complete build + verify in one step
 ./scripts/rcar-driver.sh smoke
 
+# bootloader burning package, independent of the kernel
+./scripts/rcar-driver.sh build ipl all
+./scripts/rcar-driver.sh verify
+
 # what is currently built?
 ./scripts/rcar-driver.sh info
 
@@ -89,6 +94,7 @@ ext-modules   all | fetch | install | clean
 bl31          all | image | fetch | clean
 initramfs     all | image | busybox | clean
 fitimage      all | image | clean
+ipl           all | image | fetch | clean
 ```
 
 ## Setup
@@ -112,6 +118,13 @@ git clone --single-branch --branch ubuntu/rcar-v4h-sh \
 
 `scripts/rcar-deploy.sh` additionally needs `sshpass` and `rsync` on the host.
 
+The `ipl` target additionally needs:
+
+```bash
+sudo apt-get install -y swig srecord unzip patch \
+    python3-dev python3-pyelftools python3-setuptools
+```
+
 ## Layout
 
 ```
@@ -125,6 +138,8 @@ git clone --single-branch --branch ubuntu/rcar-v4h-sh \
 │   ├── arm-trusted-firmware/
 │   ├── initramfs/         busybox tree + uInitramfs.cpio.gz
 │   ├── fitimage/          FIT inputs + fitImage
+│   ├── u-boot/            U-Boot source + build tree
+│   ├── ipl-burning/       IPL burning package
 │   └── downloads/         checksum-verified download cache
 └── .claude/skills/        per-task deep docs (plain markdown, any agent can read)
 ```
@@ -144,7 +159,8 @@ KERNEL_MODULES_OUTPUT_DIR=/tmp/mods ./scripts/rcar-driver.sh build kernel module
 ```
 
 Pinned inputs live here too: `CMEM_SRCREV`, `QOS_SRCREV`, `GLES_SHA256`,
-`TFA_SRCREV`, `BUSYBOX_SHA256`, `PCIE_FW_SHA256`, plus
+`TFA_SRCREV`, `BUSYBOX_SHA256`, `PCIE_FW_SHA256`, `UBOOT_SRCREV`,
+`PYTHON_EMBED_SHA256`, `GET_PIP_SHA256`, plus
 `FIT_KERNEL_LOADADDR=0x50200000` / `FIT_ATF_LOADADDR=0x46400000` and
 `KERNEL_LOCALVERSION=-rcarv4h-sh`.
 
@@ -198,6 +214,10 @@ and `scripts/rcar-deploy.sh` copies exactly those onto a running board. That is
 the whole path from source to hardware - there is no packaging step here and
 nothing else to run.
 
+The bootloader is separate. `build ipl all` leaves `WORKSPACE_DIR/ipl-burning/`,
+which is run by hand against a board on the serial console; `rcar-deploy.sh`
+does not touch it, and `flash.bin` does not contain BL31.
+
 ## Boot contract
 
 The board's U-Boot environment loads the fitImage from **partition 1** and
@@ -239,10 +259,14 @@ under `/usr/lib/modules/`, and `depmod` searches `/lib/modules`.
   overwrites `/boot` and `/usr/lib/modules` on the board and reboots it. Ask
   the user before the first real run, name the board, and prefer `--dry-run`
   first. It backs up automatically and refuses to run when `verify` fails.
+- **Writing the IPL package overwrites the bootloader in QSPI.** Only do it when
+  the user asks, on a board they have named. A bad `flash.bin` stops the board
+  booting until it is rewritten over serial with the flash writer.
 - **Do not delete anything under `workspace/`** without asking — it is build
   output the user may still need, even when `verify` flags it as stale.
 - **`ext-modules fetch` is destructive**: it runs `git checkout -f` and
-  `git clean -qxfd` in `workspace/ext-modules/<name>/`.
+  `git clean -qxfd` in `workspace/ext-modules/<name>/`. **`ipl fetch`** does the
+  same in `workspace/u-boot/`.
 
 ## Deeper documentation
 

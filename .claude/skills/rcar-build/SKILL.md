@@ -1,6 +1,6 @@
 ---
 name: rcar-build
-description: Build any rcar-utils target for the R-Car V4H Sparrow Hawk — kernel Image/dtbs/modules, out-of-tree modules (cmem/qos/gles), TF-A BL31, initramfs, and the U-Boot fitImage. Also builds the PREEMPT_RT (real-time) variant kernel via KERNEL_VARIANT. Use to build or rebuild after a source change. Do NOT use for editing kernel config, device trees, or boot.cmd — those have their own customize skills.
+description: Build any rcar-utils target for the R-Car V4H Sparrow Hawk — kernel Image/dtbs/modules, out-of-tree modules (cmem/qos/gles), TF-A BL31, initramfs, the U-Boot fitImage, and the IPL burning package (flash.bin). Also builds the PREEMPT_RT (real-time) variant kernel via KERNEL_VARIANT. Use to build or rebuild after a source change. Do NOT use for editing kernel config, device trees, or boot.cmd — those have their own customize skills.
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -251,6 +251,27 @@ Independent of the kernel. Every FIT configuration loads BL31, so `fitimage`
 needs it. Produces `bl31-sparrow-hawk.{bin,elf,srec}` in
 `workspace/arm-trusted-firmware/release/`.
 
+## Run: ipl
+
+```bash
+./scripts/rcar-driver.sh build ipl all      # 'image' is an alias for 'all'
+./scripts/rcar-driver.sh build ipl fetch    # destructive: resets workspace/u-boot
+./scripts/rcar-driver.sh build ipl clean
+```
+
+Independent of the kernel, and not part of `fitimage all` or `smoke`. Builds
+`flash.bin` from U-Boot (`r8a779g3_sparrowhawk_defconfig` plus the fragments and
+`sparrowhawk.env` in `local-build-scripts/ipl/u-boot/`), then installs the
+burning package to `workspace/ipl-burning/`: `flash.bin`, the PCIe firmware, the
+flash writer, the Linux and Windows burning tools, embedded Python and licences.
+
+`flash.bin` does not contain BL31; that stays in the fitImage. Run `verify`
+afterwards. A first build takes minutes, mostly fetching U-Boot.
+
+Writing the package to a board is `./run.sh` (Linux) or `run.bat` (Windows) from
+that directory, over the serial console, with DIP switches set by hand as the
+tool prompts. It overwrites the bootloader in QSPI: **ask the user first.**
+
 ## Run: initramfs
 
 ```bash
@@ -302,6 +323,7 @@ Measured on a 96-core container with the kernel already built:
 | `build fitimage all` | depends on external-module state |
 | `build initramfs all` (busybox already built) | ~7 s |
 | `build bl31 all` (after `bl31 clean`) | ~3 s |
+| `build ipl all` (cold, in a clean container) | ~5 min |
 | `rcar-driver.sh smoke` | same full build, then verify |
 
 A cold `kernel all` from a clean tree is far longer and was not timed.
@@ -321,6 +343,8 @@ a top-up.
 | `Error: Module.symvers not found` | `build kernel modules` before `ext-modules` |
 | `verify` says `fitImage kernel is STALE` | `build fitimage image` |
 | `Error: kernel image not found` from fitimage | `build fitimage all`, or build the kernel first |
+| `Error: python3 cannot find pyelftools, setuptools or Python.h` | Install the packages the error lists |
+| `_libfdt.so: undefined symbol: PyInt_AsLong` from binman | `swig` is too new (4.5.1 fails, Ubuntu 24.04's 4.2.0 works); use the distro package |
 | `Error: BL31 blob not found` | `BL31_BIN` in `config.ini` points at a missing file; fix or unset it |
 | `Error: unknown KERNEL_VARIANT '<x>'` | Typo; the error lists the valid names (fragments in `local-build-scripts/kernel-config/`) |
 | `verify` says STALE *and* `no module tree for the built kernel` | `linux-sh/` holds the other variant; re-run the build for the variant you are checking |

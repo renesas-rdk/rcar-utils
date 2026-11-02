@@ -11,6 +11,7 @@ and FIT image (`PLATFORM=RCAR-V4H-SH`).
 ├── build_ext_modules.sh
 ├── build_fitimage.sh
 ├── build_initramfs.sh
+├── build_ipl.sh
 ├── build_kernel.sh
 ├── common.sh
 ├── config.ini
@@ -19,13 +20,17 @@ and FIT image (`PLATFORM=RCAR-V4H-SH`).
 │       └── boot.cmd
 ├── initramfs/
 │   └── init
+├── ipl/
+│   ├── burning/
+│   ├── License/
+│   └── u-boot/
 ├── main_build.sh
 ├── patches/
 │   ├── cmem/
-│   └── qos/
+│   ├── qos/
+│   └── u-boot/
 └── README.md
 
-7 directories, 11 files
 ```
 
 ## Prerequisites
@@ -48,6 +53,13 @@ sudo apt install \
     curl \
     git \
     device-tree-compiler
+```
+
+The `ipl` target additionally needs:
+
+```bash
+sudo apt install swig srecord unzip patch \
+    python3-dev python3-pyelftools python3-setuptools
 ```
 
 ## Usage
@@ -105,6 +117,16 @@ Option:
                 - all   (build/install kernel and external modules, build BL31
                          and initramfs, then assemble the fitImage)
                 - image (assemble the fitImage from an existing kernel build)
+                - clean
+
+        6. ipl
+            Build the IPL burning package: flash.bin (U-Boot) plus the tools,
+            flash writer, PCIe firmware and licences that write it to the
+            board's QSPI flash. Independent of the kernel.
+            <sub_command>:
+                - all   (fetch if needed, build U-Boot, install the package)
+                - image (same as all)
+                - fetch (re-fetch at the pinned revision and re-apply patches)
                 - clean
 
 For example:
@@ -174,6 +196,8 @@ ready to build:
     ├── arm-trusted-firmware/     TF-A source and release/bl31-sparrow-hawk.bin
     ├── initramfs/                busybox tree and uInitramfs.cpio.gz
     ├── fitimage/                 FIT inputs and fitImage
+    ├── u-boot/                   U-Boot source and build tree
+    ├── ipl-burning/              IPL burning package
     └── downloads/                checksum-verified download cache
 ```
 
@@ -204,7 +228,7 @@ a single run: `KERNEL_MODULES_OUTPUT_DIR=/tmp/mods ./main_build.sh kernel module
 - **KERNEL_DIR**: Kernel source tree. Defaults to `<rcar-utils>/linux-sh`.
 - **KERNEL_URL** / **KERNEL_BRANCH**: Repository and branch used when the kernel source has to be cloned.
 - **WORKSPACE_DIR**: Parent of every output directory. Defaults to `<rcar-utils>/workspace`. Set it to move all of them at once.
-- **KERNEL_MODULES_OUTPUT_DIR**, **EXT_MODULES_SRC_DIR**, **TFA_SRC_DIR**, **INITRAMFS_SRC_DIR**, **FIT_OUTPUT_DIR**, **DOWNLOAD_DIR**: One output directory each, all under `WORKSPACE_DIR` by default.
+- **KERNEL_MODULES_OUTPUT_DIR**, **EXT_MODULES_SRC_DIR**, **TFA_SRC_DIR**, **INITRAMFS_SRC_DIR**, **FIT_OUTPUT_DIR**, **UBOOT_SRC_DIR**, **IPL_OUTPUT_DIR**, **DOWNLOAD_DIR**: One output directory each, all under `WORKSPACE_DIR` by default.
 
 ARM Trusted Firmware settings, only used by the `bl31` target:
 
@@ -229,6 +253,12 @@ FIT image settings, only used by the `fitimage` target:
 - **FIT_KERNEL_LOADADDR** / **FIT_ATF_LOADADDR**: Load/entry addresses, must match the board's U-Boot environment.
 - **FIT_ITS**: Optional path to a hand-written image tree source, used instead of the generated one.
 
+
+IPL burning package settings, only used by the `ipl` target:
+
+- **UBOOT_URL** / **UBOOT_SRCREV** / **UBOOT_PV**: U-Boot source, pinned revision, and the version recorded in the package's licence directory.
+- **PYTHON_EMBED_URL** / **PYTHON_EMBED_SHA256**: Embedded Python for running the burning tool on Windows.
+- **GET_PIP_URL** / **GET_PIP_SHA256**: `get-pip.py` for that embedded Python.
 
 Out-of-tree module settings, only used by the `ext-modules` target:
 

@@ -55,6 +55,16 @@ Option:
                 - image (assemble the fitImage from an existing kernel build)
                 - clean
 
+        6. ipl
+            Build the IPL burning package: flash.bin (U-Boot) plus the tools,
+            flash writer, PCIe firmware and licences that write it to the
+            board's QSPI flash. Independent of the kernel.
+            <sub_command>:
+                - all   (fetch if needed, build U-Boot, install the package)
+                - image (same as all)
+                - fetch (re-fetch at the pinned revision and re-apply patches)
+                - clean
+
 For example:
     Build all images (Kernel image and device tree) for the Linux Kernel:
         \$ ./main_build.sh kernel all
@@ -81,6 +91,8 @@ Note: No configuration is needed to build. The kernel source is expected in
         workspace/arm-trusted-firmware
         workspace/initramfs       busybox tree and uInitramfs.cpio.gz
         workspace/fitimage        FIT inputs and fitImage
+        workspace/u-boot          U-Boot source and build tree
+        workspace/ipl-burning     IPL burning package
         workspace/downloads       checksum-verified download cache
 
       Uncomment a path in config.ini to build somewhere else, or set it for a
@@ -121,6 +133,8 @@ TFA_OUTPUT_DIR="${TFA_OUTPUT_DIR:-${TFA_SRC_DIR}/release}"
 INITRAMFS_SRC_DIR="${INITRAMFS_SRC_DIR:-${WORKSPACE_DIR}/initramfs}"
 INITRAMFS_OUTPUT_DIR="${INITRAMFS_OUTPUT_DIR:-${INITRAMFS_SRC_DIR}}"
 FIT_OUTPUT_DIR="${FIT_OUTPUT_DIR:-${WORKSPACE_DIR}/fitimage}"
+UBOOT_SRC_DIR="${UBOOT_SRC_DIR:-${WORKSPACE_DIR}/u-boot}"
+IPL_OUTPUT_DIR="${IPL_OUTPUT_DIR:-${WORKSPACE_DIR}/ipl-burning}"
 
 # Make sure KERNEL_DIR holds a kernel source tree, offering to clone it when it
 # does not. Only the branch the build needs is fetched.

@@ -45,6 +45,14 @@ Two of these are easy to miss and neither fails loudly:
 
 The list in `local-build-scripts/README.md` omits `device-tree-compiler`.
 
+The `ipl` target needs more. `preflight` lists these without failing, because
+kernel builds do not use them; `build ipl` refuses to start without them:
+
+```bash
+sudo apt-get install -y swig srecord unzip patch \
+    python3-dev python3-pyelftools python3-setuptools
+```
+
 ### 2. Kernel source
 
 `linux-sh/` is gitignored and cloned on demand — but the build only offers to

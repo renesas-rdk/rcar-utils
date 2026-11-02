@@ -95,6 +95,9 @@ rcar-customize-kernel-config (variant fragment, if it needs changing)
 The stock and RT kernels take turns in `linux-sh/`, so build the one you want
 immediately before deploying it.
 
+`build ipl all` builds the separate IPL burning package (`flash.bin`) and is not
+part of it.
+
 `fitimage all` builds and installs kernel and external modules, builds BL31 and
 the initramfs, and assembles the FIT — one command.
 

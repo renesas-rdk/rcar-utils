@@ -74,6 +74,13 @@ before believing the failure.
 | `usr/lib/firmware/rcar_gen4_pcie.bin` staged | PCIe PHY firmware missing next to the module |
 | initramfs has `init`, `linuxrc`, `pcie-rcar-gen4.ko`, `usr/lib/firmware/rcar_gen4_pcie.bin` | PCIe never comes up, real rootfs unreachable |
 | BL31 blob present | fitImage cannot be assembled |
+| IPL package files present (when `workspace/ipl-burning/` exists) | burning tool or licence missing from the package |
+| `flash.bin` ≤ `0x300000` bytes | it would overwrite the PCIe firmware in QSPI |
+| package `flash.bin` == U-Boot build's | an interrupted build left the previous bootloader in the package |
+| U-Boot FIT at `0x80000` has `uboot` and `fdt-1` | SPL has nothing to load |
+| `flash.bin` has `bootcmd=run autoconf_mmc`, `autoconf_nvme`, `renesas_rcar_gen4_load_firmware` | board cannot find the fitImage or the PCIe firmware |
+| `rcar_gen4_pcie.bin` matches `PCIE_FW_SHA256` and is `0x8000` bytes | U-Boot reads a fixed size from QSPI |
+| embedded Python `._pth` enables `import site` | `run.bat` cannot install pip |
 
 ## Reading the output
 
@@ -103,7 +110,8 @@ Every `FAIL` prints the fixing command. Common ones:
 - **`fdtoverlay` is not U-Boot.** An overlay applying on the host is strong
   evidence, not proof it applies at boot.
 - **Nothing here executes aarch64 code.** No boot, no module load, no runtime
-  behaviour is tested.
+  behaviour is tested. That includes `flash.bin`: only its layout and contents
+  are checked, not that it brings up the board.
 - **Nothing checks against the board's real U-Boot environment.** Load
   addresses are taken from `config.ini`, not read from the target.
 - **Verification follows the FIT staging directory.** Reassembling the FIT

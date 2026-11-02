@@ -38,6 +38,9 @@ else
 			"bl31")
 				./build_bl31.sh "${2}"
 				;;
+			"ipl")
+				./build_ipl.sh "${2}"
+				;;
 			*)
 				show_help
 				;;
