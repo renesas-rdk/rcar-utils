@@ -79,6 +79,7 @@ before believing the failure.
 | package `flash.bin` == U-Boot build's | an interrupted build left the previous bootloader in the package |
 | U-Boot FIT at `0x80000` has `uboot` and `fdt-1` | SPL has nothing to load |
 | `flash.bin` has `bootcmd=run autoconf_mmc`, `autoconf_nvme`, `renesas_rcar_gen4_load_firmware` | board cannot find the fitImage or the PCIe firmware |
+| `load_uenv` exists and `autoconf_{mmc,nvme,usb}` run it | `/boot/uEnv.txt` is ignored without any message at boot |
 | `rcar_gen4_pcie.bin` matches `PCIE_FW_SHA256` and is `0x8000` bytes | U-Boot reads a fixed size from QSPI |
 | embedded Python `._pth` enables `import site` | `run.bat` cannot install pip |
 

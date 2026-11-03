@@ -35,6 +35,8 @@ Line-by-line walkthrough: [references/bootcmd-walkthrough.md](references/bootcmd
 | Config names it may use | `FIT_OVERLAY_CONFIGS` in `local-build-scripts/build_fitimage.sh` |
 | Load addresses | `FIT_KERNEL_LOADADDR`, `FIT_ATF_LOADADDR` in `config.ini` |
 | Board-side U-Boot env | Saved on the board; loads partition 1 `/boot/fitImage` and sources its `script` node |
+| Default U-Boot env | `local-build-scripts/ipl/u-boot/sparrowhawk.env`, built into `flash.bin` by the `ipl` target |
+| Optional env file | `/boot/uEnv.txt` on partition 1 of the boot device |
 
 `boot.cmd` is staged into `workspace/fitimage/` and compiled into the FIT by
 the fitimage target. It is **plain text in the repo** — no build step of its
@@ -141,6 +143,43 @@ before editing `boot.cmd`.
 
 Chain several: `setenv conf_append '#fan-pwm#j2-imx219'`.
 Undo it: `setenv conf_append` with no value, then `saveenv`.
+
+### From `/boot/uEnv.txt`
+
+With an IPL built by the `ipl` target, the same variables can be set from a file
+on the board, with no serial console:
+
+```
+# /boot/uEnv.txt
+fan=pwm
+conf_append=#j2-imx219
+```
+
+`autoconf_{mmc,nvme,usb}` import it after setting `bootargs` and before loading
+the fitImage, from the same device and partition. What to expect:
+
+- **Any variable can be set**, and its value lasts for that boot unless someone
+  runs `saveenv`. Setting `bootcmd` or `autoconf_*` here does nothing useful,
+  because they are already running.
+- **`bootargs` replaces the whole string**, it does not append. Include `root=`,
+  because the initramfs decision is parsed from it (see Gotchas).
+- **A missing or empty file is not an error.** U-Boot prints `Failed to load
+  '/boot/uEnv.txt'` and boots on. Comment lines and CRLF line endings are
+  accepted, and a malformed line is skipped.
+- **An environment saved on the board wins over the one in a new `flash.bin`.**
+  The burning tool does not touch the saved environment at `0x3f80000`, so a
+  board that ever ran `saveenv` keeps its old `autoconf_*` and ignores
+  `uEnv.txt`, with no message. Update those variables once at the U-Boot prompt:
+
+  ```
+  env default -f load_uenv autoconf_mmc autoconf_nvme autoconf_usb
+  saveenv
+  ```
+
+  Check first with `printenv autoconf_mmc`: it should contain `run load_uenv`.
+  Avoid `env default -a`, which also drops saved `fan` and `conf_append`.
+
+`rcar-deploy.sh` neither ships nor removes `uEnv.txt`.
 
 Be honest with the user about what this is:
 

@@ -423,6 +423,19 @@ verify_ipl() {
 		fi
 	done
 
+	# Without the hook, /boot/uEnv.txt is ignored without any message at boot.
+	local d
+	if ! grep -aqF 'load_uenv=' "$flash"; then
+		bad "environment has no load_uenv; /boot/uEnv.txt would be ignored"
+	fi
+	for d in mmc nvme usb; do
+		if LC_ALL=C grep -aqE "autoconf_${d}=[^[:cntrl:]]*run load_uenv" "$flash"; then
+			ok "autoconf_${d} reads /boot/uEnv.txt"
+		else
+			bad "autoconf_${d} does not run load_uenv; /boot/uEnv.txt would be ignored"
+		fi
+	done
+
 	# U-Boot reads a fixed 0x8000 bytes (set_pcie_firmware_info).
 	local fw="${out}/rcar_gen4_pcie.bin" want
 	want=$(sed -n 's/^PCIE_FW_SHA256=//p' "${SCRIPTS_DIR}/config.ini")

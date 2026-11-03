@@ -229,10 +229,13 @@ load nvme 0:1 ${loadaddr} /boot/fitImage && source ${loadaddr}:script
 load usb 0:1  ${loadaddr} /boot/fitImage && source ${loadaddr}:script
 ```
 
+With an IPL from the `ipl` target, U-Boot first imports `/boot/uEnv.txt` from the
+same partition if it exists. See `.claude/skills/rcar-customize-boot/SKILL.md`.
+
 On-target layout:
 
 ```
-/boot/                    fitImage (the only file U-Boot reads), *.dtb, *.dtbo
+/boot/                    fitImage (the file U-Boot needs), optional uEnv.txt, *.dtb, *.dtbo
 /usr/lib/modules/<rel>/   modules + modules.dep
 /usr/lib/firmware/        rcar_gen4_pcie.bin, LICENCE, rgx.fw.*, rgx.sh.*
 /usr/lib/modules-load.d/  cmemdrv, pvrsrvkm, uio_pdrv_genirq .conf
