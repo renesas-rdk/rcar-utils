@@ -55,7 +55,7 @@ sudo apt install \
     device-tree-compiler
 ```
 
-The `ipl` target additionally needs:
+The `ipl` target also needs:
 
 ```bash
 sudo apt install swig srecord unzip patch \
@@ -168,8 +168,8 @@ brought up to date with `make olddefconfig`, so the build uses what menuconfig
 saved. When `.config` is still the generated one it is regenerated on every
 build instead, so an update to the defconfig or to the fragment is picked up.
 The scripts tell the two apart with a copy of the last generated `.config` in
-`<kernel>/.rcar-config.stamp`; a `.config` with no stamp beside it — one from an
-older checkout, or written by hand — counts as customized and is kept.
+`<kernel>/.rcar-config.stamp`. A `.config` with no stamp beside it, such as one
+from an older checkout or one written by hand, counts as customized and is kept.
 
 To go back to the board configuration and discard local changes:
 
@@ -215,7 +215,7 @@ Clone it now? [y/N]
 
 ### config.ini
 
-This configuration file contains the configurations for the build. Please make sure that you review all the settings carefully before performing a build.
+This file holds the build settings. Review them before you build.
 
 - **PLATFORM**: Select the supported platform (`RCAR-V4H-SH`).
 - **KERNEL_LOCALVERSION**: Suffix appended to `uname -r`.

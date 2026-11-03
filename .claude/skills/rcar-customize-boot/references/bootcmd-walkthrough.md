@@ -1,4 +1,4 @@
-# boot.cmd — line-by-line
+# boot.cmd line by line
 
 Source: `local-build-scripts/fit/rcar-v4h-sh/boot.cmd`. This runs **in U-Boot**,
 after `load … /boot/fitImage` and `source ${loadaddr}:script`.
@@ -13,13 +13,13 @@ autoconf_nvme=pci e && nvme scan && setenv bootargs "rw root=/dev/nvme0n1p1 root
 autoconf_usb=pci e && usb start && setenv bootargs "rw root=/dev/sda1 rootwait" && load usb 0:1 ${loadaddr} /boot/fitImage && source ${loadaddr}:script
 ```
 
-So on entry the script can rely on: `${loadaddr}` set, `${bootargs}` set with a
-`root=/dev/…`, fitImage already in RAM. Always **partition 1**, always
+On entry, `${loadaddr}` is set, `${bootargs}` is set with a `root=/dev/…`, and
+the fitImage is in RAM. Always **partition 1**, always
 `/boot/fitImage`.
 
 There is also a fixed fallback in `mmc_boot.cfg`:
 `CONFIG_BOOTCOMMAND="load mmc 0:1 0x58000000 /boot/fitImage && bootm 0x58000000"`
-— that path runs `bootm` with **no configuration string**, so it takes the FIT
+That path runs `bootm` with **no configuration string**, so it takes the FIT
 default (`default = "default"`) and applies no overlays.
 
 ## The shared chip-ID reader
@@ -35,7 +35,7 @@ setenv imx708_read_id '
 '
 ```
 
-Defined once, `run imx708_read_id` from both camera blocks. Sets 2-byte
+Both camera blocks call it with `run imx708_read_id`. It sets 2-byte
 register addressing, reads 2 bytes from `0x0016` into scratch RAM at
 `0x48000000`, then byte-swaps into `${chip_id}`.
 
@@ -82,9 +82,9 @@ if i2c probe 0x45; then
     i2c mw 0x45 0x02 0x00 && sleep 0.1 && i2c mw 0x45 0x02 0x03 && sleep 0.1
 ```
 
-`0x45` is the display power controller — it must be powered **on** before the
+`0x45` is the display power controller. It must be powered **on** before the
 touch controller at `0x5d` will answer. The two writes with `sleep 0.1` are a
-power cycle; the delays are load-bearing.
+power cycle, and it needs both delays.
 
 ```sh
     if i2c probe 0x5d; then
@@ -107,11 +107,12 @@ fi
 
 - `0x8047.2` is register `0x8047` with **2-byte addressing** (the `.2` suffix).
 - Goodix config version `0x41`/`0x42` distinguishes 7in from 5in. A newer panel
-  revision reporting `0x43` matches **neither** and leaves `j4_conf` empty — no
-  display overlay, silently.
+  revision reporting `0x43` matches **neither** and leaves `j4_conf` empty, so the
+  board gets no display overlay and no message.
 - The Waveshare check is **inside** the `0x45` branch and runs after the RPi
   check, so it overrides it if both match.
-- Olimex is `elif` — only reached when `0x45` does **not** answer.
+- Olimex is in the `elif`, so the script reaches it only when `0x45` does **not**
+  answer.
 
 ## Fan
 
@@ -128,7 +129,7 @@ if test "${fan}" -eq "argon40" ; then
 fi
 ```
 
-**Opt-in.** `${fan}` is never set by this script — it comes from the saved
+**Opt-in.** This script never sets `${fan}`. It comes from the saved
 U-Boot environment. No `fan` env means no fan overlay, whatever is plugged in:
 
 ```
@@ -136,13 +137,13 @@ setenv fan pwm
 saveenv
 ```
 
-`-eq` is U-Boot's `test` numeric operator being used on strings. It behaves
+`-eq` is U-Boot's `test` numeric operator being used on strings. It works
 here, but `itest.s` is the string comparison (as used for `bootdev` below).
 
-Only `argon40` additionally verifies hardware (`0x1a` on bus 3); `pwm` is taken
+Only `argon40` also checks hardware (`0x1a` on bus 3); `pwm` is taken
 on the env var alone.
 
-## Boot device → initramfs
+## Boot device and initramfs
 
 ```sh
 setenv bootdev ${bootargs}
@@ -180,9 +181,9 @@ A typical result:
 bootm 0x48080000#default#uio#j1-imx219#rpi-display-2-7in
 ```
 
-- `#uio` is a **literal** — the UIO/CMEM overlay always applies.
+- `#uio` is a **literal**, so the UIO/CMEM overlay always applies.
 - `${conf_append}` is last, so it overrides everything. It is unset by default
-  and is the intended per-board override hook.
+  and is the intended per-board override.
 - Unset slots contribute nothing (empty string), not an empty `#`.
 
 ## Testing changes
@@ -193,20 +194,20 @@ There is no host-side test for this file. The most you can do:
    `mkimage -l workspace/fitimage/fitImage | grep -A3 '(script)'`
 2. Confirm every `#name` the script can emit exists as a configuration:
    `mkimage -l workspace/fitimage/fitImage | grep -E '^ Configuration'`
-3. On a booted board, read what the script composed — U-Boot records it in the
+3. On a booted board, read what the script composed. U-Boot records it in the
    device tree it passes the kernel, so this needs **no serial console**:
    `tr -d '\0' < /proc/device-tree/chosen/u-boot,bootconf`
-   → `default#uio#j1-imx708#fan-argon40`
+   prints a string such as `default#uio#j1-imx708#fan-argon40`.
 4. On the serial console, read the echoed line before `bootm`
    (`bootcmd: bootm ${loadaddr}${conf}`) together with the `--- Check J1 ---`
    probe output above it.
 
-Steps 3–4 are the real tests, and they answer different questions. **Step 3
-says what was chosen** — cheap, scriptable, works over ssh; it is the one to
-run after every edit. **Step 4 says why** — which `i2c probe` hit, what
-`imx708_read_id` read back — and it is the only way to tell "the device was not
-there" from "the device was there and detection missed it". Reach for it when
-step 3 is missing a name you expected.
+Steps 3 and 4 test the script on the board, and they answer different questions.
+**Step 3 says what was chosen.** It works over ssh, can be scripted, and is the
+one to run after every edit. **Step 4 says why**: which `i2c probe` hit and what
+`imx708_read_id` read back. It is the only way to tell "the device was not there"
+from "the device was there and detection missed it". Use it when step 3 is
+missing a name you expected.
 
-Steps 1–2 catch the common mistake (a config name that does not exist) without
+Steps 1 and 2 catch the common mistake (a config name that does not exist) without
 a board. Full on-board procedure: `rcar-verify-hardware`.

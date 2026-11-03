@@ -1,4 +1,4 @@
-# R-Car Utility - R-Car V4H Sparrow Hawk
+# R-Car Utility for the R-Car V4H Sparrow Hawk
 
 Standalone scripts to build and deploy the Linux kernel, modules, firmware,
 initramfs, TF-A BL31, and U-Boot FIT image (`fitImage`) for the R-Car V4H
@@ -11,7 +11,7 @@ only.
 
 ```
 .
-├── .claude/skills/         AI agent skills (see "AI Agent Skills" below)
+├── .claude/skills/         AI agent skills (see "AI agent skills" below)
 ├── linux-sh/               kernel source, cloned on demand (gitignored)
 ├── local-build-scripts/
 ├── scripts/                rcar-driver.sh and helpers
@@ -33,26 +33,26 @@ configuration and usage details.
 ./scripts/rcar-driver.sh smoke
 ```
 
-`smoke` builds the complete deployable output—installed kernel and external
-modules, BL31, initramfs, and fitImage—then verifies the artifacts.
+`smoke` builds and installs the kernel and external modules, builds BL31, the
+initramfs, and the fitImage, then verifies the artifacts.
 
-No configuration is needed. The kernel source is expected in `linux-sh/` and
-the build offers to clone it (single branch) when it is missing; everything
-produced is written under `workspace/`, next to these scripts. Uncomment a path
+No configuration is needed. The build expects the kernel source in `linux-sh/`
+and offers to clone it (single branch) when it is missing. It writes all output
+under `workspace/`, next to these scripts. Uncomment a path
 in `config.ini` only to build somewhere else.
 
-Every input and deployable artifact is produced directly by this repository.
-No external build system, packaging step, or pre-populated deploy directory is
-required.
+The scripts in this repository fetch every input and build every deployable
+artifact. You do not need an external build system, a packaging step, or a
+pre-populated deploy directory.
 
-## AI Agent Skills
+## AI agent skills
 
-These scripts ship with a set of *AI Agent Skills* so an AI agent (Claude, Codex, GitHub Copilot, etc.) can set up,
-build, verify, and deploy the Linux kernel and related components for the R-Car
-V4H Sparrow Hawk.
+This repo includes skills that let an AI agent (Claude, Codex, GitHub Copilot)
+set up, build, verify, and deploy the Linux kernel and related components for
+the R-Car V4H Sparrow Hawk.
 
-Each skill lives in `.claude/skills/<name>/SKILL.md` and is picked up
-automatically when AI Agent runs from the root of this repository.
+Each skill is a file at `.claude/skills/<name>/SKILL.md`. An agent running from
+the root of this repository picks them up automatically.
 
 | Skill | Purpose | Use when |
 | --- | --- | --- |

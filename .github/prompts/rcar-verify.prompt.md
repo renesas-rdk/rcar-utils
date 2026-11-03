@@ -1,5 +1,5 @@
 ---
-mode: agent
+agent: agent
 description: Verify R-Car V4H Sparrow Hawk build artifacts without a board.
 ---
 
@@ -17,12 +17,12 @@ Run:
 Then report, per failing check, what it means and the fixing command. The
 common ones:
 
-- `fitImage kernel is STALE` → `./scripts/rcar-driver.sh build fitimage image`
-- `modules.dep missing or empty` → install `kmod`, then
-  `./scripts/rcar-driver.sh build kernel modules-install`
-- `does NOT apply: <name>.dtbo` → the overlay's target node is gone from the
-  base DTB
-- `stale module tree: <ver>` → build output from an older kernel; it prints the
-  `rm -rf`, but **ask the user before deleting anything under `workspace/`**
+- `fitImage kernel is STALE`: run `./scripts/rcar-driver.sh build fitimage image`.
+- `modules.dep missing or empty`: install `kmod`, then run
+  `./scripts/rcar-driver.sh build kernel modules-install`.
+- `does NOT apply: <name>.dtbo`: the overlay's target node is gone from the
+  base DTB.
+- `stale module tree: <ver>`: this is build output from an older kernel. The
+  check prints the `rm -rf`, but **ask the user before deleting anything under `workspace/`**
 
 Do not "fix" a failure by passing a skip flag. Exit 0 means every check passed.

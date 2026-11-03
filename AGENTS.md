@@ -1,7 +1,7 @@
-# AGENTS.md — rcar-utils
+# AGENTS.md for rcar-utils
 
-Instructions for coding agents (Codex, GitHub Copilot, Claude Code, …) working
-in this repo. Humans: this doubles as the orientation doc.
+Instructions for coding agents (Codex, GitHub Copilot, Claude Code) working in
+this repo. It is also the orientation doc for people.
 
 Standalone build and deployment scripts for the **R-Car V4H Sparrow Hawk**
 (`PLATFORM=RCAR-V4H-SH`, SoC `r8a779g3`). They produce the kernel, modules,
@@ -9,9 +9,9 @@ firmware, initramfs, TF-A BL31, U-Boot `fitImage`, and the IPL burning package
 (`flash.bin`) directly from source.
 Branch `ubuntu/rcar-v4h-sh` is trimmed to the Sparrow Hawk build only.
 
-## Two entry points — use these, not raw make
+## Two entry points
 
-Both are plain bash with no dependencies beyond the build toolchain. Run them
+Use these two scripts, not raw `make`. Both are plain bash with no dependencies beyond the build toolchain. Run them
 from the repo root; they work from any cwd.
 
 ```bash
@@ -27,7 +27,7 @@ Run either with no arguments for full usage.
 
 It does `source ./config.ini` and `source ./common.sh`. Run from anywhere else
 it prints `./config.ini: No such file or directory`, then **carries on with an
-empty `PLATFORM`** before failing on the sub-script — the error names a missing
+empty `PLATFORM`** before failing on the sub-script. The error names a missing
 file, not a wrong directory.
 
 **Never call `main_build.sh` directly.** Use `./scripts/rcar-driver.sh build
@@ -108,7 +108,7 @@ sudo apt-get install -y build-essential gcc-aarch64-linux-gnu \
     kmod cpio curl git device-tree-compiler
 ```
 
-The kernel source is cloned on demand, but **only when stdin is a TTY** — an
+The kernel source is cloned on demand, but **only when stdin is a TTY**. An
 agent running non-interactively gets an error, not a clone. Pre-clone it:
 
 ```bash
@@ -116,9 +116,9 @@ git clone --single-branch --branch ubuntu/rcar-v4h-sh \
     https://github.com/renesas-rdk/linux-sh.git linux-sh
 ```
 
-`scripts/rcar-deploy.sh` additionally needs `sshpass` and `rsync` on the host.
+`scripts/rcar-deploy.sh` also needs `sshpass` and `rsync` on the host.
 
-The `ipl` target additionally needs:
+The `ipl` target also needs:
 
 ```bash
 sudo apt-get install -y swig srecord unzip patch \
@@ -145,13 +145,13 @@ sudo apt-get install -y swig srecord unzip patch \
 ```
 
 `workspace/` and `linux-sh/` are gitignored, so `git status` says nothing about
-build state. `./scripts/rcar-driver.sh info` is the view.
+build state. Run `./scripts/rcar-driver.sh info` to see it.
 
 ## config.ini
 
 Sourced *before* `common.sh`, so anything assigned there wins over the
-environment. Paths are left **commented out** on purpose: an assignment — even
-an empty one — would overwrite an env var. While a line stays commented, the
+environment. Paths are **commented out** on purpose, because any assignment, even
+an empty one, would overwrite an env var. While a line stays commented, the
 same variable can be set per run:
 
 ```bash
@@ -168,7 +168,7 @@ Pinned inputs live here too: `CMEM_SRCREV`, `QOS_SRCREV`, `GLES_SHA256`,
 
 `KERNEL_VARIANT=<name>` builds a second kernel from the same source tree with
 `local-build-scripts/kernel-config/<name>.config` merged **last**, so it can
-override anything the board configuration set - including
+override anything the board configuration set, including
 `CONFIG_LOCALVERSION`, which gives the variant its own `uname -r` and its own
 `/usr/lib/modules/<release>`. One variant ships today:
 
@@ -189,19 +189,18 @@ export WORKSPACE_DIR=$PWD/workspace-preempt-rt
 WORKSPACE_DIR=$PWD/workspace-preempt-rt ./scripts/rcar-driver.sh verify
 ```
 
-The kernel tree itself is shared, so the two variants take turns in
-`linux-sh/` - switching `KERNEL_VARIANT` regenerates `.config` and recompiles.
-Only the outputs under `WORKSPACE_DIR` are kept apart.
+Both variants build in the same `linux-sh/` tree, so switching `KERNEL_VARIANT`
+regenerates `.config` and recompiles. `WORKSPACE_DIR` separates only the outputs.
 
 **A variant fragment has to pin back what its own dependencies unhide.**
-`PREEMPT_RT` depends on `EXPERT`, and a number of unrelated symbols are
-declared `default y if !EXPERT` - turning `EXPERT` on silently flipped 13
+`PREEMPT_RT` depends on `EXPERT`, and some unrelated symbols are
+declared `default y if !EXPERT`. Turning `EXPERT` on silently flipped 13
 `HID_*` quirk drivers off and the whole media/DVB menu on (+116 modules) before
 `preempt-rt.config` pinned them back. After adding or editing a variant, diff
 its `.config` against the stock one and check every difference is one you
 meant.
 
-## The deliverable is the artifacts
+## Build outputs
 
 `rcar-utils` produces build artifacts, not packages. A finished build leaves
 
@@ -210,9 +209,8 @@ WORKSPACE_DIR/fitimage/            fitImage, Image, *.dtb, *.dtbo
 WORKSPACE_DIR/kernel-modules/usr/  modules, firmware, headers, modprobe.d
 ```
 
-and `scripts/rcar-deploy.sh` copies exactly those onto a running board. That is
-the whole path from source to hardware - there is no packaging step here and
-nothing else to run.
+and `scripts/rcar-deploy.sh` copies exactly those onto a running board. There is
+no packaging step and nothing else to run.
 
 The bootloader is separate. `build ipl all` leaves `WORKSPACE_DIR/ipl-burning/`,
 which is run by hand against a board on the serial console; `rcar-deploy.sh`
@@ -242,16 +240,19 @@ On-target layout:
 /usr/lib/modprobe.d/      cmemdrv, uio_pdrv_genirq .conf
 ```
 
-The target rootfs must be **usrmerged** (`/lib` → `/usr/lib`): modules install
+The target rootfs must be **usrmerged** (`/lib` is a symlink to `/usr/lib`): modules install
 under `/usr/lib/modules/`, and `depmod` searches `/lib/modules`.
 
-## Expected build noise — not errors
+## Expected build noise
 
-- `warning: override: reassigning to symbol ...` — the defconfig and the
-  `sparrow_hawk.config` fragment are concatenated then run through
-  `make alldefconfig`; the overrides are the fragment doing its job.
+These lines are not errors:
+
+- `warning: override: reassigning to symbol ...` appears because the scripts
+  concatenate the defconfig and the `sparrow_hawk.config` fragment and run the
+  result through `make alldefconfig`. The fragment overrides the defconfig on
+  purpose.
 - `Description: unavailable` / `Kernel: unavailable` in `mkimage -l` for the
-  overlay configurations — they carry only an `fdt` property and inherit the
+  overlay configurations. They carry only an `fdt` property and inherit the
   kernel from the `default` config.
 - `WARNING: You are not specifying how to find dependent libraries ... SYSROOT`
   during the gles (PowerVR) build.
@@ -265,7 +266,7 @@ under `/usr/lib/modules/`, and `depmod` searches `/lib/modules`.
 - **Writing the IPL package overwrites the bootloader in QSPI.** Only do it when
   the user asks, on a board they have named. A bad `flash.bin` stops the board
   booting until it is rewritten over serial with the flash writer.
-- **Do not delete anything under `workspace/`** without asking — it is build
+- **Do not delete anything under `workspace/`** without asking. It is build
   output the user may still need, even when `verify` flags it as stale.
 - **`ext-modules fetch` is destructive**: it runs `git checkout -f` and
   `git clean -qxfd` in `workspace/ext-modules/<name>/`. **`ipl fetch`** does the
@@ -274,7 +275,7 @@ under `/usr/lib/modules/`, and `depmod` searches `/lib/modules`.
 ## Deeper documentation
 
 Task-specific guides live in `.claude/skills/<topic>/SKILL.md`. They are plain
-markdown with a YAML header — readable by any agent or human, not Claude-only.
+markdown with a YAML header, and any agent or person can read them.
 Open the one that matches the task:
 
 | Task | File |
@@ -292,6 +293,5 @@ Open the one that matches the task:
 | Verify on a live board | `.claude/skills/rcar-verify-hardware/SKILL.md` |
 | Where do I start? | `.claude/skills/rcar-quick-start/SKILL.md` |
 
-Three have extra depth in a `references/` subdirectory: the device tree overlay
-registration walkthrough, a line-by-line reading of `boot.cmd`, and the
-observed live-board verification baseline.
+Two have extra depth in a `references/` subdirectory: the device tree overlay
+registration walkthrough and a line-by-line reading of `boot.cmd`.

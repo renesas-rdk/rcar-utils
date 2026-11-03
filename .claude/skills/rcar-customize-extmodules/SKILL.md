@@ -1,6 +1,6 @@
 ---
 name: rcar-customize-extmodules
-description: Add, patch, or re-pin the out-of-tree kernel modules built for the R-Car V4H Sparrow Hawk — cmemdrv, qos, and the PowerVR GPU driver (gles/pvrsrvkm). Use to bump a module revision, add a patch, or register a new external module. Do NOT use for in-tree kernel modules (rcar-customize-kernel-config) or device tree changes.
+description: Add, patch, or re-pin the out-of-tree kernel modules built for the R-Car V4H Sparrow Hawk, namely cmemdrv, qos, and the PowerVR GPU driver (gles/pvrsrvkm). Use to bump a module revision, add a patch, or register a new external module. Do NOT use for in-tree kernel modules (rcar-customize-kernel-config) or device tree changes.
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -56,7 +56,7 @@ Fields, `|`-separated:
 | 1 | `name` | directory under `workspace/ext-modules/`, and `patches/<name>/` |
 | 2 | `type` | `git` (clone + checkout rev) or `tar` (download + sha256 + extract) |
 | 3 | `url` | source |
-| 4 | `rev` | git commit for `git`; **sha256 for `tar`** — the checksum *is* the pin |
+| 4 | `rev` | git commit for `git`; **sha256 for `tar`**, because the checksum is the pin |
 | 5 | `sub` | subdirectory to run `make` in, relative to the source root |
 | 6 | `koglob` | glob of the `.ko` files to install |
 | 7 | `instdir` | subdirectory under `/usr/lib/modules/<ver>/` |
@@ -74,7 +74,7 @@ Fields, `|`-separated:
 
 1. Edit the pin in `local-build-scripts/config.ini` (`CMEM_SRCREV`,
    `QOS_SRCREV`, or `GLES_SHA256` + `GLES_URL`).
-2. Re-fetch — this is **destructive** to local edits in
+2. Re-fetch. This is **destructive** to local edits in
    `workspace/ext-modules/<name>/`:
 
 ```bash
@@ -102,8 +102,8 @@ Refresh or drop the offending patch, then re-run.
 Patches live in `local-build-scripts/patches/<name>/`, applied with
 `patch -p1` in the order listed in `series`.
 
-**The order is not alphabetical** — it is the required patch application
-order. The current `cmem` series is deliberately out of numeric order:
+**The order is not alphabetical.** It is the required patch application
+order. The current `cmem` series is out of numeric order on purpose:
 
 ```
 fix_build_error_612.patch
@@ -156,21 +156,20 @@ find workspace/ext-modules/<name> -name '*.ko'
   in `workspace/ext-modules/<name>/` is destroyed without a prompt. Export a
   patch first.
 - **Different modules read different env vars for the kernel path.** The script
-  exports all three because the upstream Makefiles disagree — `cmem` uses
+  exports all three because the upstream Makefiles disagree: `cmem` uses
   `KERNEL_SRC`, `qos` uses `KERNELSRC`, and `KERNELDIR` is set too. A new
   module may need a fourth; check its Makefile.
 - **`LDFLAGS=""` is exported deliberately.** Inheriting a host `LDFLAGS`
   breaks these module builds.
 - **`LOCALVERSION=""` is exported** so the module vermagic matches the kernel.
 - **A `tar` module is pinned by checksum, not revision.** Changing `GLES_URL`
-  without updating `GLES_SHA256` fails the download verification — that is the
-  intended behaviour, not a bug.
+  without updating `GLES_SHA256` fails the download verification on purpose.
 - **The gles build prints
   `WARNING: You are not specifying how to find dependent libraries … SYSROOT`.**
   Expected; it still produces `pvrsrvkm.ko` and exits 0.
 - **Module vermagic must match the kernel in the same fitImage.** After a
-  kernel config or version change, rebuild the external modules too — nothing
-  checks this on the host, it fails at `insmod` on the board.
+  kernel config or version change, rebuild the external modules too. Nothing
+  checks this on the host, and it fails at `insmod` on the board.
 - **`ext-modules install` refreshes `modules.dep`.** It requires `depmod` from
   the `kmod` package and fails rather than leaving stale dependency metadata.
 

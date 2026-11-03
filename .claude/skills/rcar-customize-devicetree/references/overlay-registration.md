@@ -1,8 +1,8 @@
-# Adding an overlay — worked example
+# Adding an overlay: worked example
 
 Every command and output below was executed against this repo. The example
-overlay was added, built, deliberately broken to prove the build-time check
-fires, then reverted.
+overlay was added, built, broken on purpose to prove the build-time check works,
+then reverted.
 
 ## The four places, again
 
@@ -10,8 +10,8 @@ fires, then reverted.
 |---|---|---|
 | 1 | `linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-<f>.dtso` | the source |
 | 2 | `linux-sh/arch/arm64/boot/dts/renesas/Makefile` | how to compile it |
-| 3 | `local-build-scripts/build_fitimage.sh` → `FIT_OVERLAY_IMAGES` | the FIT image node |
-| 4 | `local-build-scripts/build_fitimage.sh` → `FIT_OVERLAY_CONFIGS` | the selectable config |
+| 3 | `FIT_OVERLAY_IMAGES` in `local-build-scripts/build_fitimage.sh` | the FIT image node |
+| 4 | `FIT_OVERLAY_CONFIGS` in `local-build-scripts/build_fitimage.sh` | the selectable config |
 
 ## 1. The source
 
@@ -33,8 +33,8 @@ fires, then reverted.
 `&{/}` targets the root by path. Real overlays normally target a label the base
 DTS exports (`&i2c0`, `&csi40`), or a full path when it does not.
 
-Start from `r8a779g3-sparrow-hawk-fan-pwm.dtso` — it is the smallest real one
-and its header comment documents the sysfs surface, which is the house style.
+Start from `r8a779g3-sparrow-hawk-fan-pwm.dtso`. It is the smallest real one, and
+its header comment documents the sysfs interface, which is the convention here.
 
 ## 2. Kernel Makefile
 
@@ -47,10 +47,10 @@ r8a779g3-sparrow-hawk-smoketest-dtbs := r8a779g3-sparrow-hawk.dtb r8a779g3-sparr
 dtb-$(CONFIG_ARCH_R8A779G0) += r8a779g3-sparrow-hawk-smoketest.dtb
 ```
 
-- Line 1 compiles the overlay → `.dtbo`. This is the blob the FIT embeds.
-- Lines 2–3 build a **pre-merged** `.dtb` (base + overlay applied at build
-  time). Nothing consumes this artifact — its value is that producing it
-  **fails the build** when the overlay does not apply. Keep them.
+- Line 1 compiles the overlay to a `.dtbo`, the blob the FIT embeds.
+- Lines 2 and 3 build a **pre-merged** `.dtb` (base + overlay applied at build
+  time). Nothing consumes this artifact. Keep the lines, because producing it
+  **fails the build** when the overlay does not apply.
 
 ## 3 + 4. FIT registration
 
@@ -68,11 +68,11 @@ and to `FIT_OVERLAY_CONFIGS`:
 
 Formats:
 
-- `FIT_OVERLAY_IMAGES` — `"<fdt node label>|<dtbo file name>"`
-- `FIT_OVERLAY_CONFIGS` — `"<config name>|<fdt node label>|<comment>"`
+- `FIT_OVERLAY_IMAGES`: `"<fdt node label>|<dtbo file name>"`
+- `FIT_OVERLAY_CONFIGS`: `"<config name>|<fdt node label>|<comment>"`
 
 The config name is what `boot.cmd` appends as `#smoketest`. Two config entries
-may point at one node — that is how the `rpi-display-2` and `waveshare-panel`
+may point at one node, which is how the `rpi-display-2` and `waveshare-panel`
 aliases are kept for backward compatibility:
 
 ```sh
@@ -134,12 +134,12 @@ Failed to apply '...-smoketest.dtbo': FDT_ERR_NOTFOUND
 make[3]: *** [scripts/Makefile.dtbs:85: ...-smoketest.dtb] Error 1
 ```
 
-Build exits **1**. Note `DTC` still succeeded — `dtc` compiles a broken overlay
-happily. Only the `OVL` step catches it, and only because lines 2–3 of the
-Makefile exist. Drop them and this failure moves to the board.
+The build exits **1**. `DTC` still succeeded, because `dtc` compiles a broken
+overlay without error. Only the `OVL` step catches it, and only because lines 2
+and 3 of the Makefile exist. Without them, this failure appears only on the board.
 
-`rcar-driver.sh verify` is the second net, checking every `.dtbo` against the base
-with `fdtoverlay` after the fact.
+`rcar-driver.sh verify` is the second check. It tests every `.dtbo` against the
+base with `fdtoverlay` after the build.
 
 ## Removing an overlay
 
@@ -151,7 +151,7 @@ Reverse order, all four places, then rebuild:
 mkimage -l workspace/fitimage/fitImage | grep -c smoketest   # expect 0
 ```
 
-Stale `.dtbo`/`.dtb` files are **not** cleaned automatically — delete them from
+The build does **not** clean stale `.dtbo`/`.dtb` files. Delete them from
 `linux-sh/arch/arm64/boot/dts/renesas/`, or the fitimage target may still stage
 a blob whose source is gone.
 

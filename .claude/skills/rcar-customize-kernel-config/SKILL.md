@@ -1,6 +1,6 @@
 ---
 name: rcar-customize-kernel-config
-description: Change Linux kernel config options for the R-Car V4H Sparrow Hawk — edit sparrow_hawk_defconfig or the sparrow_hawk.config fragment, add a KERNEL_VARIANT fragment such as the PREEMPT_RT one, use menuconfig, and understand how a hand-edited .config is preserved or discarded. Use to enable/disable a driver or kernel feature. Do NOT use for device tree overlays, out-of-tree modules, or boot.cmd.
+description: Change Linux kernel config options for the R-Car V4H Sparrow Hawk. Edit sparrow_hawk_defconfig or the sparrow_hawk.config fragment, add a KERNEL_VARIANT fragment such as the PREEMPT_RT one, use menuconfig, and understand how a hand-edited .config is preserved or discarded. Use to enable/disable a driver or kernel feature. Do NOT use for device tree overlays, out-of-tree modules, or boot.cmd.
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -14,7 +14,7 @@ metadata:
 
 Enable or disable a kernel option for the Sparrow Hawk, and keep the change
 across rebuilds. The non-obvious part is **which of your two possible edits
-survives** — the scripts regenerate `.config` on every build unless they can
+survives**, because the scripts regenerate `.config` on every build unless they can
 tell you customized it.
 
 Shared facts: `AGENTS.md` at the repo root.
@@ -34,7 +34,7 @@ Every kernel target configures first through `build_kernel.sh` and
 
 **Last assignment wins.** The fragment overrides the defconfig, which is what
 produces the `warning: override: reassigning to symbol ...` noise on every
-build. That is the fragment doing its job, not a problem.
+build. That noise is expected.
 
 ## The `.rcar-config.stamp` mechanism
 
@@ -43,21 +43,20 @@ After generating `.config`, the script saves a copy as
 
 | State | What happens |
 |---|---|
-| `.config` **matches** the stamp | Treated as generated → **regenerated** from defconfig + fragment, so updates to either are picked up |
-| `.config` **differs** from the stamp | Treated as customized → **kept**, only `make olddefconfig` is run |
-| No stamp beside `.config` | Counts as customized → **kept** (a tree from an older checkout, or a hand-written `.config`) |
+| `.config` **matches** the stamp | Treated as generated and **regenerated** from defconfig + fragment, so updates to either are picked up |
+| `.config` **differs** from the stamp | Treated as customized and **kept**; only `make olddefconfig` runs |
+| No stamp beside `.config` | Counts as customized and **kept** (a tree from an older checkout, or a hand-written `.config`) |
 
-Consequence worth internalising: **editing `.config` directly is preserved, but
-silently stops you picking up defconfig/fragment updates** until you run
-`defconfig` again.
+**A direct edit to `.config` is kept, but `.config` then silently stops picking
+up defconfig and fragment updates** until you run `defconfig` again.
 
 ## Variants: a second kernel from the same tree
 
 A change that should produce a *separate* kernel rather than change the board's
 one belongs in a variant fragment, not in `sparrow_hawk.config`:
 `local-build-scripts/kernel-config/<name>.config`, selected with
-`KERNEL_VARIANT=<name>`. It is merged last - after the defconfig, the board
-fragment and the `CONFIG_LOCALVERSION` lines - so it overrides all of them and
+`KERNEL_VARIANT=<name>`. It is merged last, after the defconfig, the board
+fragment and the `CONFIG_LOCALVERSION` lines, so it overrides all of them and
 can give the kernel its own `uname -r`.
 
 `preempt-rt` ships today: `CONFIG_PREEMPT_RT=y`, release
@@ -68,20 +67,20 @@ Two things to know before writing one:
 - **Check what your own dependencies unhide.** `PREEMPT_RT` requires `EXPERT`,
   and `EXPERT` flips every symbol declared `default y if !EXPERT`. That turned
   13 `HID_*` quirk drivers off and the whole media/DVB menu on (+116 modules)
-  until the fragment grew a block pinning them back. Always diff the generated
+  until the fragment added a block pinning them back. Always diff the generated
   `.config` against the stock one.
 - **Keep the `CONFIG_LOCALVERSION` suffix to letters, digits, `.` and `-`.**
   It becomes the module directory name and `uname -r`; underscores and other
   punctuation trip up downstream tooling that consumes the release string.
 
-Building one is `rcar-build`'s job - see *Run: the PREEMPT_RT kernel* in
+To build one, see *Run: the PREEMPT_RT kernel* in
 `.claude/skills/rcar-build/SKILL.md`.
 
 ## Choosing where to make the change
 
 | Goal | Where | Survives? |
 |---|---|---|
-| Permanent, tracked, shared with the team | `arch/arm64/configs/sparrow_hawk.config` fragment | yes — it is the intended override point |
+| Permanent, tracked, shared with the team | `arch/arm64/configs/sparrow_hawk.config` fragment | yes, it is the intended override point |
 | Permanent board baseline change | `arch/arm64/configs/sparrow_hawk_defconfig` | yes, but the fragment can still override it |
 | Local experiment | `menuconfig` / edit `.config` | yes, until you run `kernel defconfig` |
 
@@ -94,8 +93,8 @@ diff shows intent.
 grep -n 'CONFIG_PCIE_RCAR_GEN4' linux-sh/arch/arm64/configs/sparrow_hawk.config
 ```
 
-Edit the fragment, then rebuild — the generated `.config` is refreshed
-automatically because it still matches the stamp:
+Edit the fragment, then rebuild. The scripts refresh the generated `.config`
+because it still matches the stamp:
 
 ```bash
 ./scripts/rcar-driver.sh build kernel modules-install
@@ -128,7 +127,7 @@ will not appear.** Discard the local state first:
 cd local-build-scripts && ./main_build.sh kernel menuconfig
 ```
 
-Interactive — needs a TTY, so run it yourself rather than from an agent.
+This is interactive and needs a TTY, so run it yourself rather than from an agent.
 It generates a `.config` first when the tree has none, so it never starts from
 plain arm64 defaults. Builds afterwards keep what it saved.
 
@@ -144,19 +143,19 @@ To go back to the board configuration and throw local changes away:
 `uname -r` suffix and therefore the **module install path**
 `/usr/lib/modules/<version><suffix>/`.
 
-Changing it renames the module tree. The old one is **not** removed —
-`workspace/kernel-modules/usr/lib/modules/` ends up with both and deploying
+Changing it renames the module tree. The scripts do **not** remove the old one,
+so `workspace/kernel-modules/usr/lib/modules/` ends up with both, and deploying
 that directory ships both. `rcar-driver.sh verify` flags the stale tree.
 
 ## Gotchas
 
-- **`m` vs `y` changes the deploy surface.** A driver built `=m` must be
+- **`m` vs `y` changes what you deploy.** A driver built `=m` must be
   installed (`kernel modules-install`) and needs `modules.dep`; `=y` does not.
   Switching `PCIE_RCAR_GEN4` to `=y` would make the initramfs copy of
-  `pcie-rcar-gen4.ko` dead weight — see `rcar-customize-initramfs`.
+  `pcie-rcar-gen4.ko` unused. See `rcar-customize-initramfs`.
 - **`alldefconfig` silently drops an option whose dependencies are unmet.** If
   a symbol you added is absent from `.config` afterwards, check its `depends
-  on` — there is no error.
+  on`. There is no error.
 - **`CONFIG_LOCALVERSION*` in the board fragment is overridden** by the two
   lines appended in step 2. Set `KERNEL_LOCALVERSION` in `config.ini` instead.
   A `KERNEL_VARIANT` fragment is appended later and may override the suffix.

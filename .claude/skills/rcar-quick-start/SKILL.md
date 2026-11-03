@@ -1,6 +1,6 @@
 ---
 name: rcar-quick-start
-description: Entry point for the R-Car V4H Sparrow Hawk build (rcar-utils) — orients you in the repo and dispatches to the right rcar-* skill for setup, building, kernel config, device trees, boot overlays, external modules, initramfs, verification, or deploy. Use when you are new to this repo or unsure which skill applies.
+description: Entry point for the R-Car V4H Sparrow Hawk build (rcar-utils). Orients you in the repo and dispatches to the right rcar-* skill for setup, building, kernel config, device trees, boot overlays, external modules, initramfs, verification, or deploy. Use when you are new to this repo or unsure which skill applies.
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -8,18 +8,18 @@ metadata:
   domain: meta
 ---
 
-# rcar-utils — start here
+# rcar-utils quick start
 
 Skill references use bare names such as `rcar-build`. Invoke that name through
 the skill picker, mention, or command syntax supported by the current client;
-Claude's slash form is not assumed to be portable to Codex or Copilot.
+Claude's slash form may not work in Codex or Copilot.
 
-Standalone scripts producing the kernel, modules, firmware, initramfs, TF-A
+This repo holds standalone scripts that build the kernel, modules, firmware, initramfs, TF-A
 BL31, and U-Boot FIT image for the **R-Car V4H Sparrow Hawk** (`r8a779g3`,
 `PLATFORM=RCAR-V4H-SH`).
 
 Shared facts every skill assumes: `AGENTS.md` at the repo root.
-The harness they all wrap: `scripts/rcar-driver.sh`.
+The script they all wrap: `scripts/rcar-driver.sh`.
 
 ## First run, in order
 
@@ -28,17 +28,17 @@ The harness they all wrap: `scripts/rcar-driver.sh`.
 ./scripts/rcar-driver.sh smoke       # complete deployable build + verify
 ```
 
-`preflight` failing → `rcar-setup-workspace`. Never seen this repo before →
-read `AGENTS.md`, it is short.
+If `preflight` fails, use `rcar-setup-workspace`. If this repo is new to you,
+read `AGENTS.md` first.
 
 ## Pick a skill
 
-| You want to… | Skill |
+| You want to | Skill |
 |---|---|
 | Prepare a fresh machine / fix a missing tool | `rcar-setup-workspace` |
 | Build anything (kernel, modules, BL31, initramfs, fitImage) | `rcar-build` |
 | Build the PREEMPT_RT / real-time kernel | `rcar-build` (see *Run: the PREEMPT_RT kernel*) |
-| Check a build is actually consistent | `rcar-verify-build` |
+| Check that a build is consistent | `rcar-verify-build` |
 | See what is currently built | `rcar-print-build-info` |
 | Enable/disable a kernel option or driver | `rcar-customize-kernel-config` |
 | Edit board hardware description, add an overlay | `rcar-customize-devicetree` |
@@ -46,19 +46,19 @@ read `AGENTS.md`, it is short.
 | Bump/patch cmem, qos, or the PowerVR GPU module | `rcar-customize-extmodules` |
 | Change early boot, NVMe/USB boot, busybox | `rcar-customize-initramfs` |
 | Get artifacts onto hardware | `rcar-deploy-image` |
-| Prove it works on the live board | `rcar-verify-hardware` |
+| Check the deployed kernel on the live board | `rcar-verify-hardware` |
 
 Boundaries that are easy to get wrong:
 
-- **devicetree vs boot** — `rcar-customize-devicetree` creates and registers an
+- **devicetree vs boot.** `rcar-customize-devicetree` creates and registers an
   overlay; `rcar-customize-boot` decides when it is applied. Adding an overlay
   needs both.
-- **kernel-config vs extmodules** — in-tree drivers (`=y`/`=m`) are Kconfig;
+- **kernel-config vs extmodules.** In-tree drivers (`=y`/`=m`) are Kconfig;
   cmem/qos/gles are fetched from upstream and are extmodules.
-- **verify vs deploy vs verify-hardware** — `rcar-verify-build` is host-side
-  and proves artifact consistency; `rcar-deploy-image` is the on-target
-  contract; `rcar-verify-hardware` is the only one that inspects the device
-  tree the board is actually running, and the only one that asks whether the
+- **verify vs deploy vs verify-hardware.** `rcar-verify-build` runs on the host
+  and checks that the artifacts are consistent. `rcar-deploy-image` installs them
+  on the board. `rcar-verify-hardware` is the only one that inspects the device
+  tree the board is running, and the only one that asks whether the
   hardware is plugged in.
 
 ## Typical flows
@@ -71,7 +71,8 @@ rcar-customize-kernel-config → rcar-build (kernel modules-install)
 → rcar-verify-build
 ```
 
-**Add a device tree overlay:** four registration places, then boot selection.
+**Add a device tree overlay.** Register it in four places, then set up boot
+selection.
 
 ```
 rcar-customize-devicetree → rcar-customize-boot
@@ -92,14 +93,14 @@ rcar-customize-kernel-config (variant fragment, if it needs changing)
 → rcar-verify-build → rcar-deploy-image
 ```
 
-The stock and RT kernels take turns in `linux-sh/`, so build the one you want
+The stock and RT kernels build in the same `linux-sh/` tree, so build the one you want
 immediately before deploying it.
 
 `build ipl all` builds the separate IPL burning package (`flash.bin`) and is not
-part of it.
+part of `fitimage all`.
 
 `fitimage all` builds and installs kernel and external modules, builds BL31 and
-the initramfs, and assembles the FIT — one command.
+the initramfs, and assembles the FIT.
 
 ## The two rules that cause the most lost time
 
@@ -108,7 +109,7 @@ the initramfs, and assembles the FIT — one command.
 with an **empty `PLATFORM`** and fails with a misleading "No such file or
 directory". Use `rcar-driver.sh build <target> <sub>`, which handles the cd.
 
-**2. Three failure modes exit 0.** A green build is not evidence:
+**2. Three failure modes exit 0.** A green build does not prove the build is good:
 
 | Failure | Why silent |
 |---|---|
@@ -132,4 +133,4 @@ directory". Use `rcar-driver.sh build <target> <sub>`, which handles the cd.
 ```
 
 `workspace/` and `linux-sh/` are gitignored, so `git status` tells you nothing
-about build state — `rcar-print-build-info` is the view.
+about build state. Use `rcar-print-build-info` to see it.

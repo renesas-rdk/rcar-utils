@@ -1,6 +1,6 @@
 ---
 name: rcar-setup-workspace
-description: Prepare a machine to build rcar-utils for the R-Car V4H Sparrow Hawk — install host packages, clone the linux-sh kernel source, and run a toolchain preflight. Use on a fresh container/host or when a build fails on a missing tool. Do NOT use for building, kernel config edits, or deploying to the board.
+description: Prepare a machine to build rcar-utils for the R-Car V4H Sparrow Hawk. Installs host packages, clones the linux-sh kernel source, and runs a toolchain preflight. Use on a fresh container/host or when a build fails on a missing tool. Do NOT use for building, kernel config edits, or deploying to the board.
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -43,8 +43,6 @@ Two of these are easy to miss and neither fails loudly:
 - **`device-tree-compiler`** provides `fdtoverlay`, which is how overlays are
   validated. Without it both `preflight` and `verify` fail.
 
-The list in `local-build-scripts/README.md` omits `device-tree-compiler`.
-
 The `ipl` target needs more. `preflight` lists these without failing, because
 kernel builds do not use them; `build ipl` refuses to start without them:
 
@@ -55,7 +53,7 @@ sudo apt-get install -y swig srecord unzip patch \
 
 ### 2. Kernel source
 
-`linux-sh/` is gitignored and cloned on demand — but the build only offers to
+`linux-sh/` is gitignored and cloned on demand, but the build only offers to
 clone **when stdin is a TTY**. Non-interactively it prints the command and
 exits 1 (`common.sh` checks `[ ! -t 0 ]`). Pre-clone it once:
 

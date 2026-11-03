@@ -1,6 +1,6 @@
 ---
 name: rcar-customize-initramfs
-description: Change the R-Car V4H Sparrow Hawk initramfs (uInitramfs.cpio.gz) — the init script, the busybox configuration, the bundled PCIe driver and PHY firmware. Use when booting from NVMe/USB fails, or to add a tool or firmware blob to the early boot environment. Do NOT use for the real rootfs, kernel config, or overlay selection.
+description: Change the R-Car V4H Sparrow Hawk initramfs (uInitramfs.cpio.gz), including the init script, the busybox configuration, the bundled PCIe driver and PHY firmware. Use when booting from NVMe/USB fails, or to add a tool or firmware blob to the early boot environment. Do NOT use for the real rootfs, kernel config, or overlay selection.
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -12,12 +12,12 @@ metadata:
 
 ## Purpose
 
-The initramfs exists for exactly one reason: **`CONFIG_PCIE_RCAR_GEN4_HOST=m`**.
-The PCIe controller driver is a module that lives in the rootfs, but on NVMe the
-rootfs sits *behind* PCIe. The initramfs breaks that loop — load the driver,
-wait for the root device, `switch_root`.
+The initramfs exists because of **`CONFIG_PCIE_RCAR_GEN4_HOST=m`**. The PCIe
+controller driver is a module in the rootfs, but on NVMe the kernel can reach the
+rootfs only through PCIe. The initramfs loads the driver, waits for the root
+device, and runs `switch_root`.
 
-It is therefore only needed when the rootfs is **not** on eMMC/SD. `boot.cmd`
+You need it only when the rootfs is **not** on eMMC/SD. `boot.cmd`
 selects the `#initramfs` FIT configuration when the boot device is not
 `mmcblk`.
 
@@ -25,7 +25,7 @@ Shared facts: `AGENTS.md` at the repo root.
 
 ## Prerequisites
 
-Built kernel **modules** — the initramfs takes `pcie-rcar-gen4.ko` from that
+Built kernel **modules**. The initramfs takes `pcie-rcar-gen4.ko` from that
 build, and its vermagic must match the kernel in the same fitImage:
 
 ```bash
@@ -74,10 +74,10 @@ zcat workspace/fitimage/uInitramfs.cpio.gz | cpio -t 2>/dev/null | grep -vE '^bi
 
 ## The init script
 
-`local-build-scripts/initramfs/init` — plain `/bin/sh`, runs under busybox:
+`local-build-scripts/initramfs/init` is plain `/bin/sh` and runs under busybox:
 
 1. Mounts `/proc`, `/sys`, `/dev` (devtmpfs), `/dev/pts`.
-2. `insmod /pcie-rcar-gen4.ko` — **`insmod` from a fixed path, not `modprobe`.**
+2. Runs `insmod /pcie-rcar-gen4.ko`, **from a fixed path, not through `modprobe`.**
    The module has no dependencies, so no `depmod`/`modules.dep` is needed and
    the initramfs never has to know the kernel release string.
 3. Parses `root=` out of `/proc/cmdline`.
@@ -85,9 +85,8 @@ zcat workspace/fitimage/uInitramfs.cpio.gz | cpio -t 2>/dev/null | grep -vE '^bi
 5. `mount -o ro`, then `exec switch_root /mnt /sbin/init`.
 
 Any failure calls `rescue()`, which prints the kernel release, lists
-`/dev/nvme* /dev/sd* /dev/mmcblk*`, and drops to a shell. That is deliberate —
-a silent failure here surfaces only as `Attempted to kill init`, which says
-nothing.
+`/dev/nvme* /dev/sd* /dev/mmcblk*`, and drops to a shell. A silent failure here
+would show up only as `Attempted to kill init`, which does not say what went wrong.
 
 To change behaviour (longer timeout, extra module, different root handling),
 edit the template and rebuild:
@@ -104,18 +103,18 @@ $EDITOR local-build-scripts/initramfs/init
 Built **statically** for arm64 from the pinned tarball. The script patches the
 generated `.config` with `sed`:
 
-- `CONFIG_STATIC=y` — no glibc in the image at all.
-- `CONFIG_TC` off — `tc` uses kernel headers that changed after 1.36.1 and does
-  not build against a current `linux-libc-dev`. Useless in an initramfs anyway.
+- `CONFIG_STATIC=y`, so the image has no glibc.
+- `CONFIG_TC` off, because `tc` uses kernel headers that changed after 1.36.1 and
+  does not build against a current `linux-libc-dev`. An initramfs does not need it.
 
 Then `make silentoldconfig` (busybox's kconfig predates `olddefconfig`).
 
-Two guards run after the build, and both matter:
+Two guards run after the build:
 
 | Guard | Catches |
 |---|---|
 | `file` output must say `statically linked` | missing `libc6-dev-arm64-cross` (no `/usr/aarch64-linux-gnu/lib/libc.a`) |
-| `file` output must say `ARM aarch64` | **missing `CROSS_COMPILE`** — a host x86 binary links fine and passes the first check, then fails only when the board runs `/init` |
+| `file` output must say `ARM aarch64` | **missing `CROSS_COMPILE`**. A host x86 binary links and passes the first check, then fails only when the board runs `/init` |
 
 To add a busybox applet, extend the `sed` block in
 `local-build-scripts/build_initramfs.sh` (`mk_busybox`) and rebuild with
@@ -136,21 +135,21 @@ Firmware goes in `usr/lib/firmware/` and is reached through that symlink.
 
 - **The initramfs is optional.** With no `uInitramfs.cpio.gz`, the fitImage is
   generated *without* the `initramfs` configuration and the board can only boot
-  a rootfs on eMMC/SD. No error — a smaller FIT and a boot failure later.
+  a rootfs on eMMC/SD. There is no error, only a smaller FIT and a boot failure later.
 - **`pcie-rcar-gen4.ko` is copied from the kernel build**, so a kernel rebuild
   requires an initramfs rebuild. `fitimage all` handles this;
   `fitimage image` does **not**, it reuses the existing cpio.
 - **`initramfs all` reuses an existing image** when called via `fitimage`'s
   `ensure_initramfs` in `reuse` mode. Only `fitimage all` forces a rebuild.
 - **Switching `CONFIG_PCIE_RCAR_GEN4_HOST` to `=y`** makes this whole image
-  unnecessary for PCIe — the driver would be built in. The initramfs would
+  unnecessary for PCIe, because the driver would be built in. The initramfs would
   still be selected by `boot.cmd` for non-MMC boots.
 - **`insmod` not `modprobe`** means adding a module *with* dependencies to the
   initramfs requires either loading them in order by hand, or bringing in
   `depmod` and a `/lib/modules/<release>/` tree.
 - **`switch_root` requires `/sbin/init` on the real rootfs.** A rootfs using a
   different init path needs the last line of the script changed.
-- **Firmware is duplicated on purpose** — once in the initramfs, once under
+- **Firmware is duplicated on purpose**, once in the initramfs, once under
   `workspace/kernel-modules/usr/lib/firmware/` for the real rootfs. The module
   calls `request_firmware()` on every probe, in both environments.
 

@@ -16,9 +16,10 @@ Sparrow Hawk device tree sources. See
   dtb-$(CONFIG_ARCH_R8A779G0) += r8a779g3-sparrow-hawk-<f>.dtb
   ```
 
-  Lines 2–3 build a pre-merged `.dtb` that nothing consumes. Keep them: they
+  Lines 2 and 3 build a pre-merged `.dtb` that nothing consumes. Keep them: they
   make the **build fail** when the overlay does not apply. `dtc` compiles a
-  broken overlay happily — without these the failure moves to the board.
+  broken overlay without error, so without these lines the failure appears only
+  on the board.
 - Overlays target labels exported by the base DTS. Renaming a label there
   silently breaks every overlay referencing it.
 - After editing: `./scripts/rcar-driver.sh build kernel dtbs`, then

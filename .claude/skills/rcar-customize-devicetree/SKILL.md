@@ -1,6 +1,6 @@
 ---
 name: rcar-customize-devicetree
-description: Edit or add R-Car V4H Sparrow Hawk device tree sources and overlays — the base r8a779g3-sparrow-hawk.dts and the .dtso overlays for cameras, displays, fans and UIO. Use to change board hardware description or add a new overlay. Do NOT use for selecting which overlay boots at run time (that is rcar-customize-boot) or for kernel Kconfig options.
+description: Edit or add R-Car V4H Sparrow Hawk device tree sources and overlays, including the base r8a779g3-sparrow-hawk.dts and the .dtso overlays for cameras, displays, fans and UIO. Use to change board hardware description or add a new overlay. Do NOT use for selecting which overlay boots at run time (that is rcar-customize-boot) or for kernel Kconfig options.
 license: "Apache-2.0"
 metadata:
   data-classification: public
@@ -15,9 +15,8 @@ metadata:
 Change what hardware the kernel sees on the Sparrow Hawk: edit the base DTS, or
 add/modify a `.dtso` overlay.
 
-**Adding an overlay means editing four places in lockstep.** Miss one and the
-failure is silent in a different way each time — see the table below. That is
-the whole reason this skill exists.
+**Adding an overlay means editing four places together.** Each one you miss
+fails silently in a different way, as the table below shows.
 
 Shared facts: `AGENTS.md` at the repo root.
 Deep detail: [references/overlay-registration.md](references/overlay-registration.md).
@@ -26,8 +25,8 @@ Deep detail: [references/overlay-registration.md](references/overlay-registratio
 
 - `rcar-setup-workspace` done; `fdtoverlay` and `dtc` on PATH.
 - Know whether your change belongs in the **base** (always present) or an
-  **overlay** (selected at boot). Anything optional or mutually exclusive —
-  a camera on J1, one of four displays on J4 — must be an overlay.
+  **overlay** (selected at boot). Anything optional or mutually exclusive,
+  such as a camera on J1 or one of four displays on J4, must be an overlay.
 
 ## Where the files live
 
@@ -37,22 +36,22 @@ Deep detail: [references/overlay-registration.md](references/overlay-registratio
 | Overlay sources | `linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-*.dtso` |
 | Build registration | `linux-sh/arch/arm64/boot/dts/renesas/Makefile` (~line 97+) |
 | FIT registration | `local-build-scripts/build_fitimage.sh` (`FIT_OVERLAY_IMAGES`, `FIT_OVERLAY_CONFIGS`) |
-| Boot selection | `local-build-scripts/fit/rcar-v4h-sh/boot.cmd` → `rcar-customize-boot` |
+| Boot selection | `local-build-scripts/fit/rcar-v4h-sh/boot.cmd` (see `rcar-customize-boot`) |
 
 Current overlays: `uio`, `camera-j{1,2}-imx{219,462,708}` (6),
 `fan-{argon40,pwm}`, `rpi-display-2-{5,7}in`, `ws-display-13in`,
-`olimex-dsi-hdmi` — 13 total.
+`olimex-dsi-hdmi`, 13 in total.
 
 ## The four places
 
 | # | Place | Miss it and… |
 |---|---|---|
 | 1 | `.dtso` source file | nothing to build |
-| 2 | Kernel `Makefile` — 3 lines | `.dtbo` never compiled; the fitimage target aborts with "missing overlay" |
+| 2 | Kernel `Makefile` (3 lines) | `.dtbo` never compiled; the fitimage target aborts with "missing overlay" |
 | 3 | `FIT_OVERLAY_IMAGES` in `build_fitimage.sh` | blob not embedded in the FIT |
-| 4 | `FIT_OVERLAY_CONFIGS` in `build_fitimage.sh` | blob embedded but **no selectable config** — `boot.cmd` appending `#name` fails at boot with a config that does not exist |
+| 4 | `FIT_OVERLAY_CONFIGS` in `build_fitimage.sh` | blob embedded but **no selectable config**, so `boot.cmd` appending `#name` fails at boot with a config that does not exist |
 
-Place 4 without 3 is the nastiest: the build succeeds, `mkimage -l` shows the
+Place 4 without 3 is the hardest to catch: the build succeeds, `mkimage -l` shows the
 configuration, and it fails only on the board.
 
 ## Procedure: edit an existing overlay
@@ -64,7 +63,7 @@ $EDITOR linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-fan-pwm.dtso
 ./scripts/rcar-driver.sh verify
 ```
 
-`verify` applies every `.dtbo` to the base with `fdtoverlay` and fails loudly
+`verify` applies every `.dtbo` to the base with `fdtoverlay` and fails
 on one that no longer applies.
 
 ## Procedure: add a new overlay
@@ -83,7 +82,7 @@ starting from the simplest existing one (`fan-pwm.dtso`). It must open with:
 ```
 
 **2.** Register in `linux-sh/arch/arm64/boot/dts/renesas/Makefile`, next to the
-other Sparrow Hawk entries — **three** lines:
+other Sparrow Hawk entries. It takes **three** lines:
 
 ```make
 dtb-$(CONFIG_ARCH_R8A779G0) += r8a779g3-sparrow-hawk-<feature>.dtbo
@@ -92,8 +91,8 @@ dtb-$(CONFIG_ARCH_R8A779G0) += r8a779g3-sparrow-hawk-<feature>.dtb
 ```
 
 The 2nd and 3rd lines build a **pre-merged** `.dtb`, which makes the kernel
-build itself fail if the overlay does not apply. Keep them — that is a
-build-time check you get for free.
+build itself fail if the overlay does not apply. Keep them. They are a
+build-time check that costs nothing.
 
 **3.** Add to `FIT_OVERLAY_IMAGES` in `local-build-scripts/build_fitimage.sh`:
 
@@ -108,7 +107,7 @@ build-time check you get for free.
 ```
 
 Format is `<config name>|<fdt node label>|<comment>`. The config name is what
-`boot.cmd` appends as `#<feature>`. Two names may point at the same node — that
+`boot.cmd` appends as `#<feature>`. Two names may point at the same node, which
 is how `rpi-display-2` and `waveshare-panel` are kept as backward-compatible
 aliases.
 
@@ -121,12 +120,12 @@ aliases.
 mkimage -l workspace/fitimage/fitImage | grep -E '^ Configuration'
 ```
 
-**6.** Make it selectable at boot → `rcar-customize-boot`.
+**6.** Make it selectable at boot with `rcar-customize-boot`.
 
 A new overlay is **not** selected by anything yet: `boot.cmd` only appends names
 it detects, so until you decide how, the overlay is embedded and unreachable.
-That skill's *A new overlay: decide how it gets selected* covers the choice —
-ask the user how the device identifies itself, then either add autodetection,
+That skill's *A new overlay: decide how it gets selected* covers the choice.
+Ask the user how the device identifies itself, then either add autodetection,
 use the env-var opt-in pattern the fan uses, or tell them to select it by hand:
 
 ```
@@ -135,10 +134,10 @@ saveenv
 boot
 ```
 
-Prefer autodetection when the device is reliably identifiable, so any board
-picks it up the way the cameras and displays already do. When it is not
-identifiable — no readable ID, GPIO-strapped, SPI/USB — say so and use
-`conf_append` rather than inventing a probe that guesses.
+Prefer autodetection when the device can be identified reliably, so any board
+picks it up the way the cameras and displays already do. When the device has no
+readable ID, is GPIO-strapped, or is SPI or USB, say so and use `conf_append`
+rather than writing a probe that guesses.
 
 ## Verification
 
@@ -160,16 +159,16 @@ fdtdump /tmp/merged.dtb | grep -A10 '<your-node>'
 
 **All of this is host-side.** It proves the overlay *applies*; it cannot prove
 U-Boot selects it, that a driver binds, or that the hardware works. For an
-overlay that describes new external hardware, that gap is the whole question —
-deploy with `rcar-deploy-image`, then `rcar-verify-hardware`, which starts by
-confirming with you that the device is actually plugged in. On this board an
-unplugged camera and a broken `.dtso` look identical from inside Linux — the
-one string that separates them is `/proc/device-tree/chosen/u-boot,bootconf`,
-which records the configuration U-Boot actually selected.
+overlay that describes new external hardware, deploy with `rcar-deploy-image`,
+then run `rcar-verify-hardware`, which starts by confirming with you that the
+device is plugged in. On this board an unplugged camera and a broken `.dtso` look
+identical from inside Linux. The one string that separates them is
+`/proc/device-tree/chosen/u-boot,bootconf`, which records the configuration
+U-Boot selected.
 
 ## Gotchas
 
-- **A broken overlay still compiles.** `dtc` happily produces a `.dtbo` whose
+- **A broken overlay still compiles.** `dtc` produces a `.dtbo` without error even when its
   target node does not exist in the base; `fdtoverlay` reports
   `FDT_ERR_NOTFOUND` only when applying. Without the pre-merged `.dtb` line in
   the Makefile, nothing catches it until boot.
@@ -178,8 +177,8 @@ which records the configuration U-Boot actually selected.
   `&{/soc/i2c@e6508000}`. Renaming a label in the base silently breaks every
   overlay referencing it.
 - **Overlays are applied in the order `boot.cmd` composes them**, not the order
-  they appear in the FIT. Two overlays writing the same property — last one
-  wins. The UIO overlay is applied first and always.
+  they appear in the FIT. When two overlays write the same property, the last
+  one wins. The UIO overlay is applied first and always.
 - **`DTC_FLAGS_r8a779g3-sparrow-hawk += -Wno-spi_bus_bridge`** in the Makefile
   suppresses a known warning for this board. `build_kernel.sh` also exports
   `DTC_FLAGS` per platform; it is *appended* to by `scripts/Makefile.dtbs`, so
@@ -195,7 +194,7 @@ which records the configuration U-Boot actually selected.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `does NOT apply` + `FDT_ERR_NOTFOUND` from verify | Target node/label absent in base | Fix the target in the `.dtso`, or add it to the base DTS |
-| fitimage target reports a missing overlay | Place 2 missing — `.dtbo` not built | Add the Makefile lines |
-| Config appears in `mkimage -l` but board fails to boot with it | Place 3 missing — node not embedded | Add to `FIT_OVERLAY_IMAGES` |
+| fitimage target reports a missing overlay | Place 2 missing, so the `.dtbo` was not built | Add the Makefile lines |
+| Config appears in `mkimage -l` but board fails to boot with it | Place 3 missing, so the node is not embedded | Add to `FIT_OVERLAY_IMAGES` |
 | Overlay in FIT but `#name` unknown at boot | Place 4 missing | Add to `FIT_OVERLAY_CONFIGS` |
 | Changes not on the board | fitImage stale | `rcar-driver.sh build fitimage image` |
