@@ -270,6 +270,9 @@ afterwards. A first build takes minutes, mostly fetching U-Boot.
 Writing the package to a board is `./run.sh` (Linux) or `run.bat` (Windows) from
 that directory, over the serial console, with DIP switches set by hand as the
 tool prompts. It overwrites the bootloader in QSPI: **ask the user first.**
+`run.sh` uses the system Python when it already has `pyserial`, `colorama` and
+`tqdm`; otherwise it installs them into `.venv/` in that directory, which needs
+`python3-venv`.
 
 ## Run: initramfs
 
