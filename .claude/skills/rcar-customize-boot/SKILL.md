@@ -63,7 +63,7 @@ write the same property:
 | `j1_conf` | I2C bus 1 probe | `#j1-imx219` / `#j1-imx462` / `#j1-imx708` / empty |
 | `j2_conf` | I2C bus 2 probe | `#j2-imx219` / `#j2-imx462` / `#j2-imx708` / empty |
 | `j4_conf` | I2C bus 0 probe | `#rpi-display-2-{5,7}in` / `#ws-display-13in` / `#olimex-dsi-hdmi` / empty |
-| `fan_conf` | `${fan}` env + I2C probe | `#fan-pwm` / `#fan-argon40` / empty |
+| `fan_conf` | I2C probe; `${fan}` has no effect (see Gotchas) | `#fan-argon40` when `0x1a` answers on bus 3, otherwise `#fan-pwm` |
 | `conf_append` | **U-Boot env, unset by default** | anything; this is the supported override |
 
 Every name here must exist in `FIT_OVERLAY_CONFIGS`, plus `default` and
@@ -86,7 +86,7 @@ Then pick one of these three, ordered from least to most cost and risk:
 | Selection | Use when | Cost |
 |---|---|---|
 | `conf_append` at the U-Boot prompt | identification is impossible, one-off, or you are still bringing the overlay up | none; no rebuild, set per board |
-| env var + probe (the `fan` pattern) | the device is detectable but **optional even when present**, or its address collides with something else | small `boot.cmd` edit; user must `setenv` once |
+| env var + probe | the device is detectable but **optional even when present**, or its address collides with something else | small `boot.cmd` edit, comparing with `itest.s`; user must `setenv` once |
 | full autodetect (the camera/display pattern) | the device can be identified reliably and should be selected on any board with no setup | `boot.cmd` edit + a new slot; every board runs the probe |
 
 ### Can it be autodetected?
@@ -151,7 +151,6 @@ on the board, with no serial console:
 
 ```
 # /boot/uEnv.txt
-fan=pwm
 conf_append=#j2-imx219
 ```
 
@@ -177,7 +176,7 @@ the fitImage, from the same device and partition. What to expect:
   ```
 
   Check first with `printenv autoconf_mmc`: it should contain `run load_uenv`.
-  Avoid `env default -a`, which also drops saved `fan` and `conf_append`.
+  Avoid `env default -a`, which also drops a saved `conf_append`.
 
 `rcar-deploy.sh` neither ships nor removes `uEnv.txt`.
 
@@ -247,14 +246,14 @@ Use the console when a name you expected is missing from `bootconf`.
 | RPi Touch Display 2 | `i2c dev 0` via mux `0x71` ch 7 | probe `0x45`, power on, probe `0x5d`, read `0x8047` | `0x41` means 7in, `0x42` means 5in |
 | Waveshare 13in | same | probe `0x41` | |
 | Olimex DSI-HDMI | same | `elif i2c probe 0x48` (LT8912B) | only when `0x45` absent |
-| Fan | `i2c dev 3` | `${fan}` env var **must** be set to `pwm`/`argon40`; argon40 also probes `0x1a` | no env var means no fan overlay |
+| Fan | `i2c dev 3` | probe `0x1a`: answers → `#fan-argon40`, otherwise `#fan-pwm` | `${fan}` has no effect; a PWM fan cannot be detected, so `#fan-pwm` is only the fallback |
 | Boot device | none | regex over `${bootargs}` `root=/dev/…` | non-`mmcblk` selects `#initramfs` |
 
 The IMX462 path is a **fallback, not a detection**. Any unrecognised sensor at
 `0x1a` is treated as IMX462.
 
-The fan is **opt-in**: `fan_conf` starts empty and `${fan}` is not set by the
-script, so a board with no `fan` env gets no fan overlay regardless of hardware.
+A fan overlay is **always selected**, whatever `${fan}` holds: see the `-eq`
+entry in Gotchas. Any device at `0x1a` on bus 3 is treated as an Argon40 fan.
 
 ## Load addresses
 
@@ -283,9 +282,10 @@ grep -nE 'load|entry' workspace/fitimage/fit-image.its | head
 - **U-Boot shell is not POSIX sh.** `if`/`test`/`setexpr`/`itest.s` are U-Boot
   builtins with their own syntax. Bash habits do not apply, and there
   is no host-side syntax check, so a typo becomes a boot failure.
-- **`test "${fan}" -eq "pwm"`** uses numeric `-eq` on a string. That is what
-  the script does today; it works in U-Boot's `test`, but it is not the string
-  comparison it looks like. `itest.s` is the string form, used for `bootdev`.
+- **`test "${fan}" -eq "pwm"` is always true.** `-eq` compares numbers, and a
+  non-numeric string reads as 0, so both fan branches run for any value, set or
+  not. Do not offer `fan=` as a way to choose the fan. `itest.s` is the string
+  form, used for `bootdev`.
 - **The initramfs decision is parsed out of `bootargs`**, by stripping
   `.*root=/dev/` then `[0-9].*`. A rootfs specified by `PARTUUID=` or `LABEL=`
   leaves `bootdev` unparsed and takes the **non-MMC** branch, selecting
@@ -308,6 +308,5 @@ grep -nE 'load|entry' workspace/fitimage/fit-image.its | head
 |---|---|---|
 | Board hangs at `bootm` | Config name not in the FIT, or load address mismatch | Check `mkimage -l` configurations and `Load Address` |
 | Wrong camera overlay applied | IMX462 fallback caught an unknown sensor at `0x1a` | Add an explicit chip-ID branch |
-| No fan overlay despite hardware | `${fan}` not set in U-Boot env | `setenv fan pwm; saveenv` |
 | Initramfs times out waiting for `PARTUUID=…`/`LABEL=…` | Root is not a direct device pathname | Use `root=/dev/<device>`, or add identifier resolution to the initramfs |
 | boot.cmd edit has no effect | fitImage not re-assembled | `rcar-driver.sh build fitimage image` |

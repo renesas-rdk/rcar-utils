@@ -129,19 +129,13 @@ if test "${fan}" -eq "argon40" ; then
 fi
 ```
 
-**Opt-in.** This script never sets `${fan}`. It comes from the saved
-U-Boot environment. No `fan` env means no fan overlay, whatever is plugged in:
+**`${fan}` has no effect.** `-eq` is U-Boot's `test` numeric operator being used
+on strings. A non-numeric string reads as 0, so both conditions are true for any
+value, set or not. `itest.s` is the string comparison (as used for `bootdev`
+below).
 
-```
-setenv fan pwm
-saveenv
-```
-
-`-eq` is U-Boot's `test` numeric operator being used on strings. It works
-here, but `itest.s` is the string comparison (as used for `bootdev` below).
-
-Only `argon40` also checks hardware (`0x1a` on bus 3); `pwm` is taken
-on the env var alone.
+So `fan_conf` is `#fan-pwm`, then becomes `#fan-argon40` when `0x1a` answers on
+bus 3. A PWM fan cannot be detected, so `#fan-pwm` is only the fallback.
 
 ## Boot device and initramfs
 
