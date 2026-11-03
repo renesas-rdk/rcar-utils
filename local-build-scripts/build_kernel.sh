@@ -89,6 +89,9 @@ kernel_setup() {
 	# appends it when LOCALVERSION is unset in the environment, so an empty
 	# value is enough - no .scmversion needed.
 	export LOCALVERSION=""
+	# "Linux version ... (user@host)": fixed identity instead of whoever/wherever built it.
+	export KBUILD_BUILD_USER="${KBUILD_BUILD_USER:-ubuntu}"
+	export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST:-rcarv4h-sh}"
 }
 
 # Concatenate the defconfig and the platform fragment and let kconfig fill in
