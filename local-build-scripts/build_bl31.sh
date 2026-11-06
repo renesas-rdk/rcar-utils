@@ -1,10 +1,13 @@
 #!/bin/bash
 #
-# Build the ARM Trusted Firmware BL31 blob used by the Sparrow Hawk fitImage
-# (bl31-sparrow-hawk.bin).
+# Build the ARM Trusted Firmware BL31 blob used by the X5H Ironhide boot
+# chain (apu-bl31-ironhide.bin).
 #
-# Every FIT configuration loads BL31 through "loadables", so the fitImage
-# cannot be assembled without it.
+# Unlike V4H Sparrow Hawk, X5H does NOT load BL31 via the FIT image - BL31
+# runs from a separately-flashed raw .srec, before U-Boot is even alive (see
+# Flash_Yocto_Binaries_X5H.md / Table 4-1-2 in the rcar-x5h workspace). This
+# target is still needed any time BL31 itself changes (kept out of the
+# fitimage target's dependency chain on purpose).
 #
 set -uo pipefail
 
@@ -16,31 +19,33 @@ if [ -n "${PLATFORM:-}" ] && [ -n "${PLAT:-}" ]; then
 	PLATFORM="$PLAT"
 fi
 
-if [ "${PLATFORM}" != "RCAR-V4H-SH" ]; then
-	echo "Error: the bl31 target is only supported for PLATFORM=RCAR-V4H-SH"
+if [ "${PLATFORM}" != "RCAR-X5H-IRONHIDE" ]; then
+	echo "Error: the bl31 target is only supported for PLATFORM=RCAR-X5H-IRONHIDE"
 	echo "       (current PLATFORM=${PLATFORM})."
 	exit 1
 fi
 
-TFA_URL="${TFA_URL:-https://github.com/ARM-software/arm-trusted-firmware.git}"
-TFA_SRCREV="${TFA_SRCREV:-1d5aa939bc8d3d892e2ed9945fa50e36a1a924cc}"
+# X5H's rcar_gen5 TF-A platform is not upstream - only Renesas's own fork has
+# it. Revision and flags verified end-to-end in 04_ATF_Build_GCC_X5H.md.
+TFA_URL="${TFA_URL:-https://github.com/renesas-rcar/arm-trusted-firmware.git}"
+TFA_SRCREV="${TFA_SRCREV:-c61d3d3e403ebb8993a603a3173dd1b368d78973}"
 # TFA_SRC_DIR and TFA_OUTPUT_DIR come from common.sh.
-BL31_NAME="bl31-sparrow-hawk"
+BL31_NAME="apu-bl31-ironhide"
 
-# PLATFORM=rcar-gen4, BUILD_OPT=rcar-gen4 and the board flags below are the
-# complete Sparrow Hawk build contract.
-TFA_PLAT="rcar_gen4"
+TFA_PLAT="rcar_gen5"
 TFA_BUILD_OPT=(bl31 rcar_srecord)
 TFA_CLEAN_OPT=(clean_srecord)
+# MBEDTLS_COMMON_MK=1 is mandatory: the platform forces TRUSTED_BOARD_BOOT,
+# which otherwise pulls in drivers/auth/mbedtls/mbedtls_crypto.mk and fails
+# with "Error: MBEDTLS_DIR not set" (confirmed by deliberately omitting it).
 TFA_OPT=(
-	LSI=V4H
+	LSI=X5H
+	SPD=opteed
 	CTX_INCLUDE_AARCH32_REGS=0
 	MBEDTLS_COMMON_MK=1
-	PTP_NONSECURE_ACCESS=1
 	LOG_LEVEL=20
 	DEBUG=0
-	ENABLE_ASSERTIONS=0
-	E=0
+	SET_SCMI_PARAM=1
 )
 
 export CROSS_COMPILE="${CROSS_COMPILE:-aarch64-linux-gnu-}"
@@ -86,9 +91,9 @@ mk_build() {
 	# Produce the binary, ELF, and S-record forms used by this repository.
 	make -C "${TFA_SRC_DIR}" distclean >/dev/null || exit 1
 	make -C "${TFA_SRC_DIR}" "${TFA_CLEAN_OPT[@]}" \
-		PLAT="${TFA_PLAT}" SPD=none MBEDTLS_COMMON_MK=1 "${TFA_OPT[@]}" >/dev/null || exit 1
+		PLAT="${TFA_PLAT}" "${TFA_OPT[@]}" >/dev/null || exit 1
 	make -C "${TFA_SRC_DIR}" -j"$(nproc)" "${TFA_BUILD_OPT[@]}" \
-		PLAT="${TFA_PLAT}" SPD=none MBEDTLS_COMMON_MK=1 "${TFA_OPT[@]}" || exit 1
+		PLAT="${TFA_PLAT}" "${TFA_OPT[@]}" || exit 1
 
 	local rel="${TFA_SRC_DIR}/build/${TFA_PLAT}/release"
 	if [ ! -f "${rel}/bl31.bin" ]; then
