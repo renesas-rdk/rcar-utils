@@ -17,9 +17,13 @@
 #                  uio-ca     CA core only, UIO enabled
 #                  coresight  CoreSight debug/trace build
 #                Unset means "default".
-#   ${fitaddr}   where to load the fitImage. Unset means ${loadaddr}, and if
-#                that is unset too, 0x9E680000 - the kernel load address this
-#                project already uses (01_Yocto_Full_Build_X5H.md).
+#   ${fitaddr}   where to load the fitImage. Unset means 0xA2600000. Not
+#                ${loadaddr}: stock U-Boot sets it to 0x9E600000, where bootm
+#                then copies the dtb (0x9E600000) and kernel (0x9E680000) on
+#                top of the FIT it is reading. 0xA2600000 is the start of the
+#                Linux CMA region - unused while U-Boot runs, clear of the
+#                kernel, of cr52_ca720_share and of relocated U-Boot at the top
+#                of DRAM bank 0. Not yet tried on real Ironhide hardware.
 #   ${fitsrc}    where to load it from: "mmc" (default) or "tftp".
 #   ${fitfile}   file name. Unset means "fitImage".
 #   ${mmcdev}    eMMC device number for fitsrc=mmc. Unset means 0.
@@ -39,11 +43,7 @@ if test -z "${fitsrc}"; then
 	setenv fitsrc mmc
 fi
 if test -z "${fitaddr}"; then
-	if test -z "${loadaddr}"; then
-		setenv fitaddr 0x9E680000
-	else
-		setenv fitaddr ${loadaddr}
-	fi
+	setenv fitaddr 0xA2600000
 fi
 if test -z "${mmcdev}"; then
 	setenv mmcdev 0
