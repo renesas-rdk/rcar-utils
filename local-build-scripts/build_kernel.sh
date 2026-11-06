@@ -101,10 +101,14 @@ kernel_setup() {
 # the defaults for everything else.
 mk_config_merged() {
 	local defconfig_file="arch/arm64/configs/${DEFCONFIG}"
-	local fragment_file="arch/arm64/configs/${CONFIG_FRAGMENT}"
+	local inputs=("${defconfig_file}")
 	local merged
 
-	for f in "${defconfig_file}" "${fragment_file}"; do
+	if [ -n "${CONFIG_FRAGMENT}" ]; then
+		inputs+=("arch/arm64/configs/${CONFIG_FRAGMENT}")
+	fi
+
+	for f in "${inputs[@]}"; do
 		if [ ! -f "$f" ]; then
 			echo "Error: missing kernel config input: ${KERNEL_DIR}/$f"
 			exit 1
@@ -112,11 +116,13 @@ mk_config_merged() {
 	done
 
 	merged="$(mktemp -t rcar-merged-config.XXXXXX)"
-	cat "${defconfig_file}" "${fragment_file}" > "${merged}"
-	# Last assignment wins, so pin the local version here.
+	cat "${inputs[@]}" > "${merged}"
+	# Last assignment wins, so pin the local version here. "-" not ":-": an
+	# explicitly empty KERNEL_LOCALVERSION (X5H's real defconfig value) must
+	# stay empty.
 	{
 		echo "CONFIG_LOCALVERSION_AUTO=n"
-		echo "CONFIG_LOCALVERSION=\"${KERNEL_LOCALVERSION:--arm64-renesas}\""
+		echo "CONFIG_LOCALVERSION=\"${KERNEL_LOCALVERSION--arm64-renesas}\""
 	} >> "${merged}"
 	# The variant fragment goes last of all: it is meant to override the board
 	# configuration, and its CONFIG_LOCALVERSION has to beat the one just
@@ -172,7 +178,7 @@ mk_distclean() {
 # overwriting whatever is there now, and record what was generated.
 config_generate() {
 	kernel_setup
-	if [ -n "${CONFIG_FRAGMENT}" ]; then
+	if [ -n "${CONFIG_FRAGMENT}" ] || [ -n "${VARIANT_FRAGMENT}" ]; then
 		mk_config_merged
 	else
 		make "${DEFCONFIG}" || exit 1
