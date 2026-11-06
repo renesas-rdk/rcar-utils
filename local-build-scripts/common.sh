@@ -21,16 +21,7 @@ Option:
                 - modules
                 - modules-install
 
-        2. ext-modules
-            Build the pinned out-of-tree modules cmemdrv, qos and pvrsrvkm.
-            Requires a built kernel.
-            <sub_command>:
-                - all     (fetch if needed, then build)
-                - fetch   (re-clone at the pinned revision and re-apply patches)
-                - install (build and install to KERNEL_MODULES_OUTPUT_DIR)
-                - clean
-
-        3. bl31
+        2. bl31
             Build the ARM Trusted Firmware BL31 blob. Flashed separately as
             a raw .srec on X5H (not loaded via the fitImage - see
             Flash_Yocto_Binaries_X5H.md in the rcar-x5h workspace).
@@ -39,7 +30,7 @@ Option:
                 - fetch (re-clone at the pinned revision)
                 - clean
 
-        4. optee
+        3. optee
             Build OP-TEE OS (BL32). Also flashed separately as a raw .srec,
             not loaded via the fitImage. Not present in the upstream V4H
             repo this was ported from - added because X5H's real boot chain
@@ -49,7 +40,7 @@ Option:
                 - fetch (re-clone at the pinned revision)
                 - clean
 
-        5. uboot
+        4. uboot
             Build U-Boot (BL33). Also flashed separately as a raw .srec. Not
             present in the upstream V4H repo (that board keeps a stock,
             pre-flashed U-Boot); added for X5H because this project already
@@ -59,16 +50,16 @@ Option:
                 - fetch (re-clone at the pinned revision)
                 - clean
 
-        6. initramfs
+        5. initramfs
             NOT YET IMPLEMENTED for X5H - see build_initramfs.sh. Needed to
             boot a rootfs that is not on eMMC/SD, if X5H's PCIe driver turns
             out to need firmware loaded before root is reachable (unconfirmed).
 
-        7. ext-modules
+        6. ext-modules
             NOT YET IMPLEMENTED for X5H - see build_ext_modules.sh. X5H's
             out-of-tree GPU/cmem/qos driver situation has not been researched.
 
-        8. fitimage
+        7. fitimage
             Build a U-Boot FIT image (fitImage) containing the kernel + dtb
             (+ optional ramdisk) only - unlike V4H, it does NOT contain BL31:
             on X5H, BL31/OP-TEE/U-Boot each run from separately-flashed raw
@@ -239,45 +230,98 @@ ensure_kernel_dir() {
 # Cache for the artifacts pinned by checksum, shared by every target.
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-${WORKSPACE_DIR}/downloads}"
 
-# Required firmware blobs. Both the kernel (CONFIG_EXTRA_FIRMWARE) and U-Boot
-# (CONFIG_PHY_R8A78000_MP_PHY_FW) hard-fail to build without these - confirmed
-# by deliberately removing them and re-building (02_/03_Build_GCC_X5H.md).
-# Unlike V4H's single rcar_gen4_pcie.bin (downloadable from linux-firmware),
-# these 3 files are NOT publicly downloadable: they ship only inside the
-# Renesas SDK v4.39.0 package (My Renesas account required):
+
+#-----------------------------------------------------------------------------
+# Required firmware blobs
+#-----------------------------------------------------------------------------
+# These are embedded into the binaries at BUILD time, not loaded at run time:
+#
+#   kernel  CONFIG_EXTRA_FIRMWARE="rcar_gen5_mp_phy.bin rcar_gen5_pcie6_iccm.bin
+#                                  rcar_gen5_pcie6_dccm.bin"
+#           CONFIG_EXTRA_FIRMWARE_DIR="/lib/firmware"
+#   U-Boot  CONFIG_PHY_R8A78000_MP_PHY_FW="/lib/firmware/rcar_gen5_mp_phy.bin"
+#           (via configs/r8a78000_ironhide_defconfig's
+#            "#include <configs/renesas_rcar5.config>")
+#
+# Both Kconfigs hardcode the absolute path /lib/firmware on the BUILD HOST, so
+# the blobs have to be there before "make" runs - they are linked straight into
+# the image. This is a different mechanism from V4H's rcar_gen4_pcie.bin, which
+# the board loads at run time with request_firmware() and therefore has to ship
+# in the target rootfs. Nothing needs to install these three onto the target.
+#
+# Missing blobs are a hard build failure, not a warning:
+#   kernel  No rule to make target '/usr/lib/firmware/rcar_gen5_mp_phy.bin',
+#           needed by 'drivers/base/firmware_loader/builtin/...'
+#   U-Boot  No rule to make target '/usr/lib/firmware/rcar_gen5_mp_phy.bin',
+#           needed by 'drivers/phy/renesas/mp_phy_fw_obj.o'
+# (confirmed by deliberately removing them and rebuilding - see
+# 02_Kernel_Build_GCC_X5H.md and 03_Uboot_Build_GCC_X5H.md.)
+#
+# The blobs are NOT publicly downloadable - unlike V4H's, which comes from
+# linux-firmware - so there is no URL/checksum to pin here. They ship only
+# inside the Renesas SDK v4.39.0 package (My Renesas account required):
 #   https://www.renesas.com/en/document/mas/sdk-documentation-sdk-v4390
 #   -> <SDK v4.39.0>/user_manual/current/linux_bsp/_attachments/
-FW_DIR="${FW_DIR:-}"
 FW_BLOBS=(rcar_gen5_mp_phy.bin rcar_gen5_pcie6_iccm.bin rcar_gen5_pcie6_dccm.bin)
+# Where the Kconfigs above look for them. Only change this if the kernel's
+# CONFIG_EXTRA_FIRMWARE_DIR is changed to match.
+FW_INSTALL_DIR="${FW_INSTALL_DIR:-/lib/firmware}"
+# Optional source directory holding the three blobs, copied to FW_INSTALL_DIR
+# when they are not already there. Set in config.ini.
+FW_DIR="${FW_DIR:-}"
 
-# Install the required firmware blobs into <dir>/usr/lib/firmware. Used by
-# both the kernel module output tree and (via /lib/firmware on the build
-# host, see build_uboot.sh) the U-Boot build. Fails loudly, with the SDK
-# download instructions, rather than silently skipping a missing blob.
-install_firmware_blobs() {
-	local dir="$1" blob missing=()
+fw_blobs_installed() {
+	local blob
+	for blob in "${FW_BLOBS[@]}"; do
+		[ -f "${FW_INSTALL_DIR}/${blob}" ] || return 1
+	done
+}
+
+fw_missing_msg() {
+	echo "Error: required firmware blobs are missing from ${FW_INSTALL_DIR}." >&2
+	echo "       Needed: ${FW_BLOBS[*]}" >&2
+	echo "" >&2
+	echo "       They are embedded into the kernel and U-Boot at build time, so" >&2
+	echo "       the build fails outright without them. They are not downloadable:" >&2
+	echo "       get them from the Renesas SDK v4.39.0 package (My Renesas login):" >&2
+	echo "         https://www.renesas.com/en/document/mas/sdk-documentation-sdk-v4390" >&2
+	echo "         -> <SDK v4.39.0>/user_manual/current/linux_bsp/_attachments/" >&2
+	echo "" >&2
+	echo "       Then either copy them to ${FW_INSTALL_DIR} yourself, or set FW_DIR" >&2
+	echo "       in config.ini to the directory holding them and re-run this build." >&2
+}
+
+# Make sure the three blobs are in FW_INSTALL_DIR before the kernel or U-Boot
+# build starts. Already-present blobs are left alone, so a build host (or
+# container image) that ships them needs no FW_DIR at all.
+ensure_firmware_blobs() {
+	local blob
+
+	if fw_blobs_installed; then
+		return 0
+	fi
 
 	if [ -z "${FW_DIR}" ]; then
-		missing=("${FW_BLOBS[@]}")
-	else
-		for blob in "${FW_BLOBS[@]}"; do
-			[ -f "${FW_DIR}/${blob}" ] || missing+=("${blob}")
-		done
-	fi
-	if [ "${#missing[@]}" -gt 0 ]; then
-		echo "Error: required firmware blobs not found in FW_DIR=${FW_DIR:-<unset>}" >&2
-		echo "       Missing: ${missing[*]}" >&2
-		echo "       These are not downloadable - get them from the Renesas SDK v4.39.0" >&2
-		echo "       package (My Renesas account required):" >&2
-		echo "         https://www.renesas.com/en/document/mas/sdk-documentation-sdk-v4390" >&2
-		echo "         -> <SDK v4.39.0>/user_manual/current/linux_bsp/_attachments/" >&2
-		echo "       Then set FW_DIR in config.ini to the directory containing them." >&2
+		fw_missing_msg
 		return 1
 	fi
 
-	install -d "${dir}/usr/lib/firmware"
 	for blob in "${FW_BLOBS[@]}"; do
-		install -m 644 "${FW_DIR}/${blob}" "${dir}/usr/lib/firmware/${blob}"
-		echo "  usr/lib/firmware/${blob}"
+		if [ ! -f "${FW_DIR}/${blob}" ]; then
+			echo "Error: ${FW_DIR}/${blob} not found." >&2
+			fw_missing_msg
+			return 1
+		fi
+	done
+
+	echo "Installing firmware blobs from ${FW_DIR} to ${FW_INSTALL_DIR}"
+	# Writing to /lib/firmware needs root; use sudo only when not already root
+	# so this still works unprivileged in a root container.
+	local sudo_cmd=()
+	[ "$(id -u)" -ne 0 ] && sudo_cmd=(sudo)
+	"${sudo_cmd[@]}" install -d "${FW_INSTALL_DIR}" || return 1
+	for blob in "${FW_BLOBS[@]}"; do
+		"${sudo_cmd[@]}" install -m 644 "${FW_DIR}/${blob}" "${FW_INSTALL_DIR}/${blob}" || return 1
+		echo "  ${FW_INSTALL_DIR}/${blob}"
 	done
 }

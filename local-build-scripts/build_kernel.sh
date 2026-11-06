@@ -15,18 +15,24 @@ fi
 
 # Per-platform mapping
 declare -A KERN_DEFCONFIG=(
-	["RCAR-V4H-SH"]="sparrow_hawk_defconfig"
+	["RCAR-X5H-IRONHIDE"]="defconfig"
 )
 
-# Kconfig fragment merged on top of the defconfig, mirroring the ".cfg" files a
+# Kconfig fragment merged on top of the defconfig. X5H needs none: the plain
+# arch/arm64/configs/defconfig already carries everything this board needs - it
+# is also the file Yocto itself builds from (KBUILD_DEFCONFIG="defconfig" in
+# linux-renesas_6.12.bb). Do NOT switch to renesas_defconfig: it is a separate,
+# independently-maintained file missing CONFIG_RENESAS_ETHER_SWITCH3, which
+# breaks the vmlinux link with "undefined reference to rswitch3_attach_tsnes"
+# (root-caused in 02_Kernel_Build_GCC_X5H.md).
 declare -A KERN_CONFIG_FRAGMENT=(
-	["RCAR-V4H-SH"]="sparrow_hawk.config"
+	["RCAR-X5H-IRONHIDE"]=""
 )
 
 # Extra flags exported to dtc while building the device trees. "-@" keeps the
 # __symbols__ node so that U-Boot can apply the .dtbo overlays at run time.
 declare -A KERN_DTC_FLAGS=(
-	["RCAR-V4H-SH"]="-@"
+	["RCAR-X5H-IRONHIDE"]="-@"
 )
 
 # Resolve DEFCONFIG
@@ -283,13 +289,12 @@ mk_modules_install() {
 	echo "uio_pdrv_genirq" > "${KERNEL_MODULES_OUTPUT_DIR}/usr/lib/modules-load.d/uio_pdrv_genirq.conf"
 	echo 'options uio_pdrv_genirq of_id="generic-uio"' > "${KERNEL_MODULES_OUTPUT_DIR}/usr/lib/modprobe.d/uio_pdrv_genirq.conf"
 
-	# CONFIG_PCIE_RCAR_GEN4=m, so pcie-rcar-gen4.ko was just installed above,
-	# and it calls request_firmware() from
-	# rcar_gen4_pcie_download_phy_firmware() on every probe. The blob is not in
-	# the distro's linux-firmware package - on the board it comes from a
-	# separate .deb - so ship it with the modules, the same way the initramfs
-	# does.
-	install_pcie_firmware "${KERNEL_MODULES_OUTPUT_DIR}" || exit 1
+	# No firmware is shipped with the modules on X5H. Unlike V4H, whose
+	# pcie-rcar-gen4.ko calls request_firmware() on every probe and therefore
+	# needs the blob present on the target rootfs, X5H embeds its three blobs
+	# straight into the kernel image at build time via CONFIG_EXTRA_FIRMWARE
+	# (see ensure_firmware_blobs in common.sh), so the running board needs no
+	# copy of them at all.
 
 	echo "Installed kernel modules to ${KERNEL_MODULES_OUTPUT_DIR}"
 }
@@ -297,6 +302,10 @@ mk_modules_install() {
 # Main Linux Kernel build
 cmd="${1:-}"
 ensure_kernel_dir || exit 1
+# CONFIG_EXTRA_FIRMWARE links the three blobs into the image at build time, so
+# they have to be in /lib/firmware before any "make" runs - a missing blob is a
+# hard build failure, not a warning.
+ensure_firmware_blobs || exit 1
 echo "Starting the kernel build at ${KERNEL_DIR}"
 cd "${KERNEL_DIR}" || exit 1
 

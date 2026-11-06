@@ -35,6 +35,12 @@ else
 			"fitimage")
 				./build_fitimage.sh "${2}"
 				;;
+			"optee")
+				./build_optee.sh "${2}"
+				;;
+			"uboot")
+				./build_uboot.sh "${2}"
+				;;
 			"bl31")
 				./build_bl31.sh "${2}"
 				;;
