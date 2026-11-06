@@ -1,16 +1,16 @@
 #!/bin/bash
 #
-# rcar-driver.sh - build and verify the Sparrow Hawk kernel / fitImage without a board.
+# rcar-driver.sh - build and verify the X5H Ironhide kernel / fitImage without a board.
 #
 # The product of this repo is a boot artifact for an aarch64 target, so there is
 # nothing to "launch" on the build host. The closest thing to running it is:
 # build, then prove the artifacts are internally consistent and would actually
 # boot - the fitImage carries the kernel that was just built, every device tree
-# overlay still applies to the base DTB, the module tree has a modules.dep, and
-# the initramfs holds the files the boot path reaches for.
+# variant it advertises is a readable FDT, the module tree has a modules.dep,
+# and the rest of the boot chain (BL31, OP-TEE, U-Boot) has been built.
 #
 # Each of those checks exists because the corresponding failure is silent:
-# a stale fitImage, a depmod-less modules_install and a broken overlay all
+# a stale fitImage, a depmod-less modules_install and a truncated dtb all
 # leave the build exiting 0.
 #
 # Usage:
@@ -35,8 +35,13 @@ FIT_OUTPUT_DIR="${FIT_OUTPUT_DIR:-${WORKSPACE_DIR}/fitimage}"
 KERNEL_MODULES_OUTPUT_DIR="${KERNEL_MODULES_OUTPUT_DIR:-${WORKSPACE_DIR}/kernel-modules}"
 TFA_SRC_DIR="${TFA_SRC_DIR:-${WORKSPACE_DIR}/arm-trusted-firmware}"
 TFA_OUTPUT_DIR="${TFA_OUTPUT_DIR:-${TFA_SRC_DIR}/release}"
+OPTEE_SRC_DIR="${OPTEE_SRC_DIR:-${WORKSPACE_DIR}/optee}"
+OPTEE_OUTPUT_DIR="${OPTEE_OUTPUT_DIR:-${OPTEE_SRC_DIR}/release}"
+UBOOT_SRC_DIR="${UBOOT_SRC_DIR:-${WORKSPACE_DIR}/u-boot}"
+UBOOT_OUTPUT_DIR="${UBOOT_OUTPUT_DIR:-${UBOOT_SRC_DIR}/release}"
+FW_INSTALL_DIR="${FW_INSTALL_DIR:-/lib/firmware}"
 
-BOARD_DTB="r8a779g3-sparrow-hawk"
+BOARD_DTB="r8a78000-ironhide"
 
 PASS=0
 FAIL=0
@@ -56,7 +61,7 @@ head_() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 do_preflight() {
 	head_ "Host tools"
 	local t
-	for t in aarch64-linux-gnu-gcc make bc bison flex cpio git curl mkimage dtc fdtoverlay; do
+	for t in aarch64-linux-gnu-gcc make bc bison flex git curl mkimage dtc; do
 		if command -v "$t" >/dev/null 2>&1; then
 			ok "$t"
 		else
@@ -77,8 +82,9 @@ do_preflight() {
 	else
 		bad "no kernel source at ${KERNEL_DIR}"
 		note "The build only offers to clone it when stdin is a TTY. Non-interactively:"
-		note "  git clone --single-branch --branch ubuntu/rcar-v4h-sh \\"
-		note "      https://github.com/renesas-rdk/linux-sh.git ${KERNEL_DIR}"
+		note "  git clone --single-branch --branch v6.12.80/rcar-6.1.0 \\"
+		note "      https://github.com/renesas-rcar/linux-bsp.git ${KERNEL_DIR}"
+		note "  git -C ${KERNEL_DIR} checkout e1e83b5711610d83941c51dcf48418eda209f339"
 	fi
 }
 
@@ -92,7 +98,8 @@ do_preflight() {
 do_build() {
 	if [ $# -lt 2 ]; then
 		echo "usage: rcar-driver.sh build <target> <sub_command>" >&2
-		echo "  targets: kernel ext-modules bl31 initramfs fitimage" >&2
+		echo "  targets: kernel bl31 optee uboot fitimage" >&2
+		echo "  (ext-modules and initramfs are not implemented for X5H yet)" >&2
 		return 2
 	fi
 	head_ "Build: $1 $2"
@@ -145,11 +152,11 @@ verify_fitimage() {
 	fi
 	ok "fitImage parses ($(stat -c%s "$fit") bytes)"
 
-	# Every FIT configuration loads BL31, and boot.cmd selects the initramfs
-	# configuration when the rootfs is not on eMMC/SD, so all four have to be
-	# present for both boot paths to work.
+	# No atf-1 node here: unlike V4H, BL31 is not carried in this image (it is
+	# flashed separately and already running by the time U-Boot starts). ramdisk-1
+	# is optional too - the initramfs target is not implemented for X5H.
 	local n
-	for n in kernel-1 fdt-1 atf-1 ramdisk-1 script; do
+	for n in kernel-1 fdt-1 script; do
 		if grep -q "($n)" <<<"$listing"; then
 			ok "image node ${n}"
 		else
@@ -159,10 +166,11 @@ verify_fitimage() {
 
 	local cfgs
 	cfgs=$(grep -cE '^ Configuration ' <<<"$listing")
-	if [ "$cfgs" -ge 2 ]; then
+	# One configuration per device tree variant: default, uio, uio-ca, coresight.
+	if [ "$cfgs" -ge 4 ]; then
 		ok "${cfgs} FIT configurations"
 	else
-		bad "only ${cfgs} FIT configuration(s); overlays are not exposed"
+		bad "only ${cfgs} FIT configuration(s); the dtb variants are not exposed"
 	fi
 
 	# The trap this exists for: the kernel target and the fitimage target are
@@ -182,34 +190,41 @@ verify_fitimage() {
 	fi
 }
 
-verify_overlays() {
-	head_ "Device tree overlays"
-	local base="${FIT_OUTPUT_DIR}/${BOARD_DTB}.dtb"
-	if [ ! -f "$base" ]; then
-		bad "no base DTB at ${base}"
-		return
-	fi
-	if ! command -v fdtoverlay >/dev/null 2>&1; then
-		bad "fdtoverlay not installed (device-tree-compiler); cannot check overlays"
-		return
-	fi
-
-	local tmp o err n=0
-	tmp=$(mktemp -d)
-	# A staged .dtbo that no longer applies to the base DTB is only discovered when
-	# the board fails to boot with that overlay selected - it builds fine.
-	for o in "${FIT_OUTPUT_DIR}"/${BOARD_DTB}-*.dtbo; do
-		[ -e "$o" ] || continue
-		n=$((n + 1))
-		if err=$(fdtoverlay -i "$base" -o "${tmp}/out.dtb" "$o" 2>&1); then
-			ok "applies: $(basename "$o")"
+# V4H verified that each .dtbo still applies to the base DTB with fdtoverlay.
+# Ironhide has no overlays - it has four full device tree variants - so what
+# matters here is that every variant the fitImage advertises was actually
+# built and staged, and that each is a readable FDT.
+verify_dtbs() {
+	head_ "Device trees"
+	local v n=0 bad_n=0
+	for v in "" "-uio" "-uio-ca" "-coresight"; do
+		local dtb="${FIT_OUTPUT_DIR}/${BOARD_DTB}${v}.dtb"
+		if [ ! -f "$dtb" ]; then
+			bad "not staged: $(basename "$dtb")"
+			bad_n=$((bad_n + 1))
+			continue
+		fi
+		# A truncated or non-FDT file still "exists"; dtc reading it back is
+		# what proves the staged blob is usable.
+		if dtc -I dtb -O dts -o /dev/null "$dtb" >/dev/null 2>&1; then
+			ok "$(basename "$dtb") ($(stat -c%s "$dtb") bytes)"
+			n=$((n + 1))
 		else
-			bad "does NOT apply: $(basename "$o")"
-			note "$err"
+			bad "not a readable FDT: $(basename "$dtb")"
+			bad_n=$((bad_n + 1))
 		fi
 	done
-	rm -rf "$tmp"
-	[ "$n" -eq 0 ] && bad "no overlays found in ${FIT_OUTPUT_DIR}"
+	[ "$n" -eq 0 ] && bad "no device trees staged in ${FIT_OUTPUT_DIR}"
+
+	# r8a78000-ironhide-npu.dtb is required for NPU inference but is NOT
+	# produced by the kernel build - it only ships prebuilt in the SDK's
+	# Linux BSP tarball. Absence is expected, so this is a note, not a FAIL.
+	if [ -f "${FIT_OUTPUT_DIR}/${BOARD_DTB}-npu.dtb" ]; then
+		ok "${BOARD_DTB}-npu.dtb staged (supplied by hand from the SDK)"
+	else
+		note "${BOARD_DTB}-npu.dtb absent - expected: the kernel does not build it."
+		note "Copy it from the SDK Linux BSP tarball if you need NPU inference."
+	fi
 }
 
 verify_modules() {
@@ -268,71 +283,71 @@ verify_modules() {
 		note "  rcar-driver.sh build kernel modules-install"
 	fi
 
-	local extmod
-	for extmod in updates/cmemdrv.ko extra/qos.ko extra/pvrsrvkm.ko; do
-		if [ -f "${moddir}/${extmod}" ]; then
-			ok "external module ${extmod}"
-		else
-			bad "external module ${extmod} missing"
-			note "run: rcar-driver.sh build ext-modules install"
-		fi
-	done
+	# No out-of-tree modules are checked: the ext-modules target is not
+	# implemented for X5H (V4H's cmemdrv/qos/pvrsrvkm set has not been
+	# researched for this SoC - see local-build-scripts/build_ext_modules.sh).
+	note "out-of-tree modules not checked - ext-modules is not implemented yet"
 
-	# pcie-rcar-gen4 calls request_firmware() on every probe and the blob is
-	# not in the distro linux-firmware package.
-	if [ -f "${KERNEL_MODULES_OUTPUT_DIR}/usr/lib/firmware/rcar_gen4_pcie.bin" ]; then
-		ok "PCIe PHY firmware staged with the modules"
+	# Nothing firmware-related is staged with the modules on X5H: the three
+	# blobs are linked into the kernel image at build time by
+	# CONFIG_EXTRA_FIRMWARE, so the board needs no copy. What matters instead
+	# is that they were present on the BUILD HOST - without them the kernel
+	# would not have linked at all, so this is really a "was it built the way
+	# we think" check.
+	local blob miss=0
+	for blob in rcar_gen5_mp_phy.bin rcar_gen5_pcie6_iccm.bin rcar_gen5_pcie6_dccm.bin; do
+		[ -f "${FW_INSTALL_DIR}/${blob}" ] || miss=$((miss + 1))
+	done
+	if [ "$miss" -eq 0 ]; then
+		ok "firmware blobs present in ${FW_INSTALL_DIR} (embedded at build time)"
 	else
-		bad "usr/lib/firmware/rcar_gen4_pcie.bin missing from the module tree"
+		note "${miss} of 3 firmware blobs missing from ${FW_INSTALL_DIR}"
+		note "a kernel built here would fail; an Image built elsewhere is unaffected"
 	fi
 }
 
-verify_initramfs() {
-	head_ "Initramfs"
-	local cpio="${FIT_OUTPUT_DIR}/uInitramfs.cpio.gz"
-	[ -f "$cpio" ] || cpio="${WORKSPACE_DIR}/initramfs/uInitramfs.cpio.gz"
-	if [ ! -f "$cpio" ]; then
-		note "no initramfs built (only needed to boot from NVMe/USB)"
-		return
-	fi
+# BL31, OP-TEE and U-Boot are not part of the fitImage on X5H (see
+# build_fitimage.sh): each is flashed separately as a raw .srec at a fixed
+# offset, per Table 4-1-2 of the startup guide. They are checked here so a
+# "verify" run still tells you whether the full boot chain has been built,
+# but a missing one does not mean the fitImage is wrong.
+verify_bootchain() {
+	head_ "Boot chain (flashed separately, not in the fitImage)"
 
-	local listing
-	if ! listing=$(zcat "$cpio" 2>/dev/null | cpio -t 2>/dev/null); then
-		bad "cannot read ${cpio}"
-		return
-	fi
-	ok "initramfs readable ($(wc -l <<<"$listing") entries)"
-
-	# init is what the kernel execs; the module and its firmware are the whole
-	# reason this initramfs exists (bring PCIe up, then switch to the real root).
-	local f
-	for f in init linuxrc pcie-rcar-gen4.ko usr/lib/firmware/rcar_gen4_pcie.bin; do
-		if grep -qx "$f" <<<"$listing"; then
-			ok "contains ${f}"
-		else
-			bad "missing ${f}"
-		fi
-	done
-}
-
-verify_bl31() {
-	head_ "ARM Trusted Firmware"
-	local bl31="${FIT_OUTPUT_DIR}/bl31-sparrow-hawk.bin"
-	[ -f "$bl31" ] || bl31="${TFA_OUTPUT_DIR}/bl31-sparrow-hawk.bin"
+	local bl31="${TFA_OUTPUT_DIR}/apu-bl31-ironhide.bin"
 	if [ -f "$bl31" ]; then
-		ok "BL31 blob present ($(stat -c%s "$bl31") bytes)"
+		ok "BL31 $(basename "$bl31") ($(stat -c%s "$bl31") bytes)"
 	else
-		bad "no bl31-sparrow-hawk.bin (run: rcar-driver.sh build bl31 all)"
+		bad "no apu-bl31-ironhide.bin (run: rcar-driver.sh build bl31 all)"
 	fi
+
+	local tee="${OPTEE_OUTPUT_DIR}/apu-tee-ironhide.bin"
+	if [ -f "$tee" ]; then
+		ok "OP-TEE $(basename "$tee") ($(stat -c%s "$tee") bytes)"
+	else
+		bad "no apu-tee-ironhide.bin (run: rcar-driver.sh build optee all)"
+	fi
+
+	# u-boot-elf.srec, not u-boot.bin: the S-record is what the flash
+	# programmer takes (UFS, flash_address 0x06F00000).
+	local ub="${UBOOT_OUTPUT_DIR}/u-boot-elf-ironhide.srec"
+	if [ -f "$ub" ]; then
+		ok "U-Boot $(basename "$ub") ($(stat -c%s "$ub") bytes)"
+	else
+		bad "no u-boot-elf-ironhide.srec (run: rcar-driver.sh build uboot all)"
+	fi
+
+	head_ "Initramfs"
+	note "not implemented for X5H - the normal rootfs is on eMMC/UFS, and the"
+	note "PCIe-NVMe-root case has not been researched (build_initramfs.sh)"
 }
 
 do_verify() {
 	verify_kernel
 	verify_fitimage
-	verify_overlays
+	verify_dtbs
 	verify_modules
-	verify_initramfs
-	verify_bl31
+	verify_bootchain
 
 	head_ "Result"
 	printf '  %d passed, %d failed\n\n' "$PASS" "$FAIL"
@@ -353,8 +368,9 @@ do_info() {
 	for f in "${KERNEL_DIR}/arch/arm64/boot/Image" \
 	         "${FIT_OUTPUT_DIR}/fitImage" \
 	         "${FIT_OUTPUT_DIR}/${BOARD_DTB}.dtb" \
-	         "${FIT_OUTPUT_DIR}/uInitramfs.cpio.gz" \
-	         "${TFA_OUTPUT_DIR}/bl31-sparrow-hawk.bin"; do
+	         "${TFA_OUTPUT_DIR}/apu-bl31-ironhide.bin" \
+	         "${OPTEE_OUTPUT_DIR}/apu-tee-ironhide.bin" \
+	         "${UBOOT_OUTPUT_DIR}/u-boot-elf-ironhide.srec"; do
 		if [ -f "$f" ]; then
 			printf '  %-12s %10s  %s\n' "$(stat -c%y "$f" | cut -d. -f1 | cut -d' ' -f2)" \
 				"$(stat -c%s "$f")" "${f#"${RCAR_UTILS_DIR}"/}"
@@ -378,7 +394,12 @@ case "${1:-}" in
 			echo "  preflight failed; not building."
 			exit 1
 		fi
+		# The whole deployable set: kernel+fitImage, then the three boot-chain
+		# stages that are flashed separately (BL31, OP-TEE, U-Boot).
 		do_build fitimage all || exit 1
+		do_build bl31 all || exit 1
+		do_build optee all || exit 1
+		do_build uboot all || exit 1
 		PASS=0; FAIL=0
 		do_verify
 		;;

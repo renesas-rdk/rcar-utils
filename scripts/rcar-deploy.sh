@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# rcar-deploy.sh - back up, rsync a fresh build to a running Sparrow Hawk, reboot,
+# rcar-deploy.sh - back up, rsync a fresh build to a running X5H Ironhide, reboot,
 #             and verify the board came back on the new kernel.
 #
 # The board is reached over ssh with password auth (sshpass), because the
@@ -372,11 +372,16 @@ else
 	bad "modules.dep missing for ${REL}"
 fi
 
-if sshb "test -f ${PREFIX}/usr/lib/firmware/rcar_gen4_pcie.bin" 2>/dev/null; then
-	ok "PCIe PHY firmware present"
-else
-	bad "PCIe PHY firmware missing"
-fi
+# Nothing firmware-related is checked on the target: X5H links its three blobs
+# into the kernel image at build time (CONFIG_EXTRA_FIRMWARE), so unlike V4H -
+# whose pcie-rcar-gen4.ko calls request_firmware() on every probe - the running
+# board needs no copy of them.
+#
+# This script deploys the KERNEL side only: fitImage, modules, dtbs. BL31,
+# OP-TEE and U-Boot are flashed as raw .srec at fixed offsets with the Flash
+# Programmer over USB/serial, with DIP switches set for SCIF download mode -
+# physical access this ssh-based path cannot substitute for. See
+# Flash_Yocto_Binaries_X5H.md / Table 4-1-2 in the rcar-x5h workspace.
 
 TREES=$(sshb "ls -1 ${PREFIX}/usr/lib/modules 2>/dev/null | wc -l" 2>/dev/null | tr -d '\r')
 if [ "${TREES:-0}" = "1" ]; then
