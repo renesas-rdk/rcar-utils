@@ -76,9 +76,11 @@ mk_build() {
 	# CFG_INSECURE=y builds the development/insecure-boot variant (no
 	# production key signing) - matches what this project's real Yocto
 	# build uses.
-	make -C "${OPTEE_SRC_DIR}" -e MAKEFLAGS= \
+	# cd, not make -C: "-e MAKEFLAGS=" wipes the -C directory context
+	# that sub-makes inherit, so the build fails outside the source tree.
+	(cd "${OPTEE_SRC_DIR}" && make -e MAKEFLAGS= \
 		PLATFORM="${OPTEE_PLATFORM}" CFG_ARM64_core=y CFG_INSECURE=y \
-		RCAR_DEBUG_LOG=0 CFG_SCIF=n -j"$(nproc)" || exit 1
+		RCAR_DEBUG_LOG=0 CFG_SCIF=n -j"$(nproc)") || exit 1
 
 	local rel="${OPTEE_SRC_DIR}/out/arm-plat-${OPTEE_PLATFORM}/core"
 	if [ ! -f "${rel}/tee.bin" ]; then
