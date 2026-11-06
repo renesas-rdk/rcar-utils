@@ -78,7 +78,9 @@ mk_build() {
 	# build uses.
 	# cd, not make -C: "-e MAKEFLAGS=" wipes the -C directory context
 	# that sub-makes inherit, so the build fails outside the source tree.
-	(cd "${OPTEE_SRC_DIR}" && make -e MAKEFLAGS= \
+	# Unset ARCH/CROSS_COMPILE (exported for the kernel by main_build.sh):
+	# with "make -e" ARCH=arm64 overrides OP-TEE's own ARCH=arm.
+	(cd "${OPTEE_SRC_DIR}" && unset ARCH CROSS_COMPILE && make -e MAKEFLAGS= \
 		PLATFORM="${OPTEE_PLATFORM}" CFG_ARM64_core=y CFG_INSECURE=y \
 		RCAR_DEBUG_LOG=0 CFG_SCIF=n -j"$(nproc)") || exit 1
 
