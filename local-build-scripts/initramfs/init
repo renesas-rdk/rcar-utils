@@ -1,0 +1,65 @@
+#!/bin/sh
+#
+# Init script for the R-Car V4H Sparrow Hawk initramfs, equivalent to the one
+# meta-sparrow-hawk installs from recipes-core/images/files/init.
+#
+# It exists for one reason: CONFIG_PCIE_RCAR_GEN4_HOST=m. The PCIe controller
+# driver is a module living in the rootfs, but the rootfs is behind PCIe when
+# it sits on NVMe. This breaks that loop - load the driver here, wait for the
+# root block device to show up, then hand over to the real init.
+#
+# The module is loaded with insmod from a fixed path instead of modprobe: it
+# has no dependencies of its own, so there is no need for depmod, and the
+# initramfs does not have to know the kernel release string.
+
+MODULE=/pcie-rcar-gen4.ko
+TIMEOUT=30
+
+mount -t proc     none     /proc
+mount -t sysfs    none     /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts
+mount -t devpts devpts /dev/pts
+
+# Fail loudly. A silent failure here ends as "Attempted to kill init", which
+# says nothing about what actually went wrong.
+rescue() {
+	echo ""
+	echo "initramfs: ERROR: $1"
+	echo "initramfs: kernel $(uname -r)"
+	echo "initramfs: block devices:"
+	ls -l /dev/nvme* /dev/sd* /dev/mmcblk* 2>/dev/null || echo "  (none)"
+	echo "initramfs: dropping to a shell"
+	exec sh
+}
+
+echo "initramfs: loading the PCIe driver"
+if ! insmod "${MODULE}"; then
+	rescue "could not insmod ${MODULE}"
+fi
+
+rootdev=$(sed -n 's/.*root=\([^ ]*\).*/\1/p' /proc/cmdline)
+if [ -z "${rootdev}" ]; then
+	rescue "no root= found in /proc/cmdline"
+fi
+
+echo "initramfs: waiting for ${rootdev}"
+i=0
+while [ ${i} -lt ${TIMEOUT} ]; do
+	if [ -b "${rootdev}" ]; then
+		break
+	fi
+	sleep 1
+	i=$((i + 1))
+done
+
+if [ ! -b "${rootdev}" ]; then
+	rescue "${rootdev} did not appear after ${TIMEOUT}s"
+fi
+
+if ! mount -o ro "${rootdev}" /mnt; then
+	rescue "could not mount ${rootdev}"
+fi
+
+echo "initramfs: switching root to ${rootdev}"
+exec switch_root /mnt /sbin/init
