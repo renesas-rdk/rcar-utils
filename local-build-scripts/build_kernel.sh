@@ -18,13 +18,9 @@ declare -A KERN_DEFCONFIG=(
 	["RCAR-X5H-IRONHIDE"]="defconfig"
 )
 
-# Kconfig fragment merged on top of the defconfig. X5H needs none: the plain
-# arch/arm64/configs/defconfig already carries everything this board needs - it
-# is also the file Yocto itself builds from (KBUILD_DEFCONFIG="defconfig" in
-# linux-renesas_6.12.bb). Do NOT switch to renesas_defconfig: it is a separate,
-# independently-maintained file missing CONFIG_RENESAS_ETHER_SWITCH3, which
-# breaks the vmlinux link with "undefined reference to rswitch3_attach_tsnes"
-# (root-caused in 02_Kernel_Build_GCC_X5H.md).
+# No extra fragment. Use arch/arm64/configs/defconfig.
+# renesas_defconfig lacks CONFIG_RENESAS_ETHER_SWITCH3 and the link fails
+# with "undefined reference to rswitch3_attach_tsnes".
 declare -A KERN_CONFIG_FRAGMENT=(
 	["RCAR-X5H-IRONHIDE"]=""
 )
@@ -295,12 +291,8 @@ mk_modules_install() {
 	echo "uio_pdrv_genirq" > "${KERNEL_MODULES_OUTPUT_DIR}/usr/lib/modules-load.d/uio_pdrv_genirq.conf"
 	echo 'options uio_pdrv_genirq of_id="generic-uio"' > "${KERNEL_MODULES_OUTPUT_DIR}/usr/lib/modprobe.d/uio_pdrv_genirq.conf"
 
-	# No firmware is shipped with the modules on X5H. Unlike V4H, whose
-	# pcie-rcar-gen4.ko calls request_firmware() on every probe and therefore
-	# needs the blob present on the target rootfs, X5H embeds its three blobs
-	# straight into the kernel image at build time via CONFIG_EXTRA_FIRMWARE
-	# (see ensure_firmware_blobs in common.sh), so the running board needs no
-	# copy of them at all.
+	# No firmware is installed with the modules. The three blobs are linked
+	# into the kernel image (CONFIG_EXTRA_FIRMWARE, ensure_firmware_blobs).
 
 	echo "Installed kernel modules to ${KERNEL_MODULES_OUTPUT_DIR}"
 }

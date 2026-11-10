@@ -1,13 +1,8 @@
 #!/bin/bash
 #
-# Build the ARM Trusted Firmware BL31 blob used by the X5H Ironhide boot
-# chain (apu-bl31-ironhide.bin).
-#
-# Unlike V4H Sparrow Hawk, X5H does NOT load BL31 via the FIT image - BL31
-# runs from a separately-flashed raw .srec, before U-Boot is even alive (see
-# Flash_Yocto_Binaries_X5H.md / Table 4-1-2 in the rcar-x5h workspace). This
-# target is still needed any time BL31 itself changes (kept out of the
-# fitimage target's dependency chain on purpose).
+# Build TF-A BL31 for the X5H Ironhide boot chain (apu-bl31-ironhide).
+# Flash the .srec separately. It is not part of the fitImage.
+# Flash offsets: README.md, Boot contract.
 #
 set -uo pipefail
 
@@ -25,8 +20,7 @@ if [ "${PLATFORM}" != "RCAR-X5H-IRONHIDE" ]; then
 	exit 1
 fi
 
-# X5H's rcar_gen5 TF-A platform is not upstream - only Renesas's own fork has
-# it. Revision and flags verified end-to-end in 04_ATF_Build_GCC_X5H.md.
+# rcar_gen5 is on Renesas's TF-A fork, not in ARM upstream.
 TFA_URL="${TFA_URL:-https://github.com/renesas-rcar/arm-trusted-firmware.git}"
 TFA_SRCREV="${TFA_SRCREV:-c61d3d3e403ebb8993a603a3173dd1b368d78973}"
 # TFA_SRC_DIR and TFA_OUTPUT_DIR come from common.sh.
@@ -35,9 +29,8 @@ BL31_NAME="apu-bl31-ironhide"
 TFA_PLAT="rcar_gen5"
 TFA_BUILD_OPT=(bl31 rcar_srecord)
 TFA_CLEAN_OPT=(clean_srecord)
-# MBEDTLS_COMMON_MK=1 is mandatory: the platform forces TRUSTED_BOARD_BOOT,
-# which otherwise pulls in drivers/auth/mbedtls/mbedtls_crypto.mk and fails
-# with "Error: MBEDTLS_DIR not set" (confirmed by deliberately omitting it).
+# MBEDTLS_COMMON_MK=1 is required. The platform forces TRUSTED_BOARD_BOOT,
+# and without this flag the build stops with "Error: MBEDTLS_DIR not set".
 TFA_OPT=(
 	LSI=X5H
 	SPD=opteed
@@ -65,8 +58,9 @@ fetch_src() {
 		git -C "${TFA_SRC_DIR}" fetch -q --all --tags || exit 1
 	fi
 
+	refuse_dirty_tree "${TFA_SRC_DIR}" "arm-trusted-firmware" "${TFA_SRCREV}" || exit 1
 	echo "Checking out arm-trusted-firmware at ${TFA_SRCREV}"
-	git -C "${TFA_SRC_DIR}" checkout -q -f "${TFA_SRCREV}" || exit 1
+	git -C "${TFA_SRC_DIR}" checkout -q "${TFA_SRCREV}" || exit 1
 	git -C "${TFA_SRC_DIR}" clean -qxfd || exit 1
 }
 

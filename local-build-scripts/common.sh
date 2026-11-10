@@ -22,49 +22,37 @@ Option:
                 - modules-install
 
         2. bl31
-            Build the ARM Trusted Firmware BL31 blob. Flashed separately as
-            a raw .srec on X5H (not loaded via the fitImage - see
-            Flash_Yocto_Binaries_X5H.md in the rcar-x5h workspace).
+            Build TF-A BL31 (apu-bl31-ironhide). Flash the .srec separately.
+            It is not part of the fitImage. Flash offsets: README.md, Boot contract.
             <sub_command>:
                 - all   (fetch if needed, then build)
-                - fetch (re-clone at the pinned revision)
+                - fetch (check out the pinned revision; stops if the tree is dirty)
                 - clean
 
         3. optee
-            Build OP-TEE OS (BL32). Also flashed separately as a raw .srec,
-            not loaded via the fitImage. Not present in the upstream V4H
-            repo this was ported from - added because X5H's real boot chain
-            needs it.
+            Build OP-TEE (BL32, apu-tee-ironhide). Flash the .srec separately.
+            Default is the development image (CFG_INSECURE=y).
             <sub_command>:
                 - all   (fetch if needed, then build)
-                - fetch (re-clone at the pinned revision)
+                - fetch (check out the pinned revision; stops if the tree is dirty)
                 - clean
 
         4. uboot
-            Build U-Boot (BL33). Also flashed separately as a raw .srec. Not
-            present in the upstream V4H repo (that board keeps a stock,
-            pre-flashed U-Boot); added for X5H because this project already
-            has a verified from-source build.
+            Build U-Boot (BL33, u-boot-elf-ironhide.srec). Flash it separately.
             <sub_command>:
                 - all   (fetch if needed, then build)
-                - fetch (re-clone at the pinned revision)
+                - fetch (check out the pinned revision; stops if the tree is dirty)
                 - clean
 
         5. initramfs
-            NOT YET IMPLEMENTED for X5H - see build_initramfs.sh. Needed to
-            boot a rootfs that is not on eMMC/SD, if X5H's PCIe driver turns
-            out to need firmware loaded before root is reachable (unconfirmed).
+            Not supported. Exits 1. See build_initramfs.sh.
 
         6. ext-modules
-            NOT YET IMPLEMENTED for X5H - see build_ext_modules.sh. X5H's
-            out-of-tree GPU/cmem/qos driver situation has not been researched.
+            Not supported. Exits 1. See build_ext_modules.sh.
 
         7. fitimage
-            Build a U-Boot FIT image (fitImage) containing the kernel + dtb
-            (+ optional ramdisk) only - unlike V4H, it does NOT contain BL31:
-            on X5H, BL31/OP-TEE/U-Boot each run from separately-flashed raw
-            .srec before U-Boot is even alive, so U-Boot never "loads" BL31
-            the way V4H's stock U-Boot does via FIT.
+            Build a U-Boot fitImage: kernel, device tree, optional ramdisk,
+            and the boot script. BL31 is not in this image.
             <sub_command>:
                 - all   (build/install kernel, then assemble the fitImage)
                 - image (assemble the fitImage from an existing kernel build)
@@ -129,8 +117,7 @@ RCAR_UTILS_DIR="$(cd "${COMMON_SH_DIR}/.." && pwd)"
 KERNEL_DIR="${KERNEL_DIR:-${RCAR_UTILS_DIR}/linux-sh}"
 KERNEL_URL="${KERNEL_URL:-https://github.com/renesas-rcar/linux-bsp.git}"
 KERNEL_BRANCH="${KERNEL_BRANCH:-v6.12.80/rcar-6.1.0}"
-# The branch moves; this is the exact commit this project has verified
-# end-to-end (02_Kernel_Build_GCC_X5H.md). Leave empty to track branch tip.
+# Pinned commit. Leave empty to build the tip of KERNEL_BRANCH.
 KERNEL_SRCREV="${KERNEL_SRCREV:-e1e83b5711610d83941c51dcf48418eda209f339}"
 
 # Build outputs and the sources the scripts clone themselves. Ignored by git.
@@ -160,6 +147,23 @@ kernel_dir_is_at_srcrev() {
 	[ "$(git -C "${KERNEL_DIR}" rev-parse HEAD 2>/dev/null)" = "${KERNEL_SRCREV}" ]
 }
 
+# A pinned checkout discards uncommitted work. Stop when the tree is dirty
+# and let the caller switch revision by hand. release/ is skipped: it is the
+# default *_OUTPUT_DIR inside the bl31/optee/uboot trees, so it is always
+# there after the first build.
+refuse_dirty_tree() {
+	local dir="$1" name="$2" rev="$3" dirty
+	dirty="$(git -C "${dir}" status --porcelain -- . ':(exclude)release' 2>/dev/null)" || true
+	if [ -n "${dirty}" ]; then
+		echo "Error: ${name} at ${dir} has local changes." >&2
+		echo "       Checking out ${rev} would discard them." >&2
+		echo "       Commit or stash those changes, then re-run." >&2
+		echo "       To switch revision yourself:" >&2
+		echo "         git -C ${dir} checkout ${rev}" >&2
+		return 1
+	fi
+}
+
 ensure_kernel_dir() {
 	local answer
 
@@ -168,11 +172,12 @@ ensure_kernel_dir() {
 	fi
 
 	if kernel_dir_is_valid && ! kernel_dir_is_at_srcrev; then
+		refuse_dirty_tree "${KERNEL_DIR}" "linux-bsp" "${KERNEL_SRCREV}" || return 1
 		echo "Checking out linux-bsp at ${KERNEL_SRCREV}"
 		if ! git -C "${KERNEL_DIR}" cat-file -e "${KERNEL_SRCREV}^{commit}" 2>/dev/null; then
 			git -C "${KERNEL_DIR}" fetch -q --all --tags || return 1
 		fi
-		git -C "${KERNEL_DIR}" checkout -q -f "${KERNEL_SRCREV}" || return 1
+		git -C "${KERNEL_DIR}" checkout -q "${KERNEL_SRCREV}" || return 1
 		return 0
 	fi
 
@@ -243,23 +248,10 @@ DOWNLOAD_DIR="${DOWNLOAD_DIR:-${WORKSPACE_DIR}/downloads}"
 #           (via configs/r8a78000_ironhide_defconfig's
 #            "#include <configs/renesas_rcar5.config>")
 #
-# Both Kconfigs hardcode the absolute path /lib/firmware on the BUILD HOST, so
-# the blobs have to be there before "make" runs - they are linked straight into
-# the image. This is a different mechanism from V4H's rcar_gen4_pcie.bin, which
-# the board loads at run time with request_firmware() and therefore has to ship
-# in the target rootfs. Nothing needs to install these three onto the target.
-#
-# Missing blobs are a hard build failure, not a warning:
-#   kernel  No rule to make target '/usr/lib/firmware/rcar_gen5_mp_phy.bin',
-#           needed by 'drivers/base/firmware_loader/builtin/...'
-#   U-Boot  No rule to make target '/usr/lib/firmware/rcar_gen5_mp_phy.bin',
-#           needed by 'drivers/phy/renesas/mp_phy_fw_obj.o'
-# (confirmed by deliberately removing them and rebuilding - see
-# 02_Kernel_Build_GCC_X5H.md and 03_Uboot_Build_GCC_X5H.md.)
-#
-# The blobs are NOT publicly downloadable - unlike V4H's, which comes from
-# linux-firmware - so there is no URL/checksum to pin here. They ship only
-# inside the Renesas SDK v4.39.0 package (My Renesas account required):
+# Both Kconfigs use the absolute path /lib/firmware on the build host.
+# The blobs are linked into the image. Nothing installs them on the target.
+# A missing blob fails the build. There is no public URL: they ship in the
+# Renesas SDK v4.39.0 package (My Renesas login):
 #   https://www.renesas.com/en/document/mas/sdk-documentation-sdk-v4390
 #   -> <SDK v4.39.0>/user_manual/current/linux_bsp/_attachments/
 FW_BLOBS=(rcar_gen5_mp_phy.bin rcar_gen5_pcie6_iccm.bin rcar_gen5_pcie6_dccm.bin)

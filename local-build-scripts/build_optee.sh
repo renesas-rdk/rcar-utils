@@ -1,14 +1,7 @@
 #!/bin/bash
 #
-# Build OP-TEE OS (BL32) for the X5H Ironhide boot chain (apu-tee-ironhide.bin).
-#
-# NOT present in the upstream V4H Sparrow Hawk repo this was ported from -
-# that board's boot chain does not use OP-TEE. X5H's real chain does
-# (BL31 -> BL32/OP-TEE -> BL33/U-Boot), and like bl31, it is flashed as a
-# separate raw .srec, not loaded via the fitImage.
-#
-# Fully open source (BSD-2/3-Clause) - verified end-to-end in
-# 06_Optee_Build_GCC_X5H.md in the rcar-x5h workspace.
+# Build OP-TEE (BL32) for the X5H Ironhide boot chain (apu-tee-ironhide).
+# Flash the .srec separately. It is not part of the fitImage.
 #
 set -uo pipefail
 
@@ -31,11 +24,9 @@ OPTEE_SRCREV="${OPTEE_SRCREV:-134a538a93f8bdf4d6b068430f7cb38036fa7d33}"
 OPTEE_NAME="apu-tee-ironhide"
 OPTEE_PLATFORM="rcar_gen5"
 
-# Requires python3-pycryptodome, python3-pyelftools, python3-cryptography
-# (apt packages - pip was broken on the real build server due to a mirror
-# issue missing libexpat1-dev; the apt packages work and are what preflight
-# checks for). The Debian pycryptodome package provides the "Cryptodome"
-# module name, not "Crypto" - this build does not hit that distinction.
+# Needs python3-pycryptodome, python3-pyelftools, and python3-cryptography
+# from apt. rcar-driver.sh preflight does not check them, so a missing one
+# fails here. The Debian pycryptodome package provides Cryptodome.
 export CROSS_COMPILE64="${CROSS_COMPILE64:-aarch64-linux-gnu-}"
 export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1
 
@@ -50,8 +41,9 @@ fetch_src() {
 		git -C "${OPTEE_SRC_DIR}" fetch -q --all --tags || exit 1
 	fi
 
+	refuse_dirty_tree "${OPTEE_SRC_DIR}" "optee_os" "${OPTEE_SRCREV}" || exit 1
 	echo "Checking out optee_os at ${OPTEE_SRCREV}"
-	git -C "${OPTEE_SRC_DIR}" checkout -q -f "${OPTEE_SRCREV}" || exit 1
+	git -C "${OPTEE_SRC_DIR}" checkout -q "${OPTEE_SRCREV}" || exit 1
 	git -C "${OPTEE_SRC_DIR}" clean -qxfd || exit 1
 }
 
@@ -73,15 +65,24 @@ mk_build() {
 	echo '|============================================|'
 	echo '|               Build OP-TEE OS               |'
 	echo '|============================================|'
-	# CFG_INSECURE=y builds the development/insecure-boot variant (no
-	# production key signing) - matches what this project's real Yocto
-	# build uses.
-	# cd, not make -C: "-e MAKEFLAGS=" wipes the -C directory context
-	# that sub-makes inherit, so the build fails outside the source tree.
-	# Unset ARCH/CROSS_COMPILE (exported for the kernel by main_build.sh):
-	# with "make -e" ARCH=arm64 overrides OP-TEE's own ARCH=arm.
+	# CFG_INSECURE=y is the development image, which prints "This OP-TEE
+	# configuration might be insecure" at boot. OPTEE_CFG_INSECURE=n drops
+	# that development configuration. It does not sign with production keys.
+	# cd, not make -C: "-e MAKEFLAGS=" clears the directory sub-makes inherit.
+	# Unset ARCH and CROSS_COMPILE: main_build.sh exports them for the kernel,
+	# and "make -e" would let ARCH=arm64 override OP-TEE's ARCH=arm.
+	OPTEE_CFG_INSECURE="${OPTEE_CFG_INSECURE:-y}"
+	case "${OPTEE_CFG_INSECURE}" in
+		y|n) ;;
+		*)
+			echo "Error: OPTEE_CFG_INSECURE must be y or n (got '${OPTEE_CFG_INSECURE}')."
+			exit 1
+			;;
+	esac
+	echo "OP-TEE CFG_INSECURE=${OPTEE_CFG_INSECURE}"
 	(cd "${OPTEE_SRC_DIR}" && unset ARCH CROSS_COMPILE && make -e MAKEFLAGS= \
-		PLATFORM="${OPTEE_PLATFORM}" CFG_ARM64_core=y CFG_INSECURE=y \
+		PLATFORM="${OPTEE_PLATFORM}" CFG_ARM64_core=y \
+		CFG_INSECURE="${OPTEE_CFG_INSECURE}" \
 		RCAR_DEBUG_LOG=0 CFG_SCIF=n -j"$(nproc)") || exit 1
 
 	local rel="${OPTEE_SRC_DIR}/out/arm-plat-${OPTEE_PLATFORM}/core"

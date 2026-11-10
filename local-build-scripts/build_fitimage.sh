@@ -1,26 +1,8 @@
 #!/bin/bash
 #
-# Assemble a U-Boot FIT image (fitImage) for the R-Car X5H Ironhide: kernel +
-# the board's device tree variants + optional initramfs + boot script, each
-# device tree exposed as its own FIT configuration so boot.cmd (or the U-Boot
-# environment) can select one at run time.
-#
-# Deliberately different from the V4H Sparrow Hawk version this was ported
-# from, in two ways:
-#
-#  1. No BL31 inside the FIT. V4H's stock U-Boot chainloads BL31 out of the
-#     FIT ("loadables = atf-1"). X5H does not work that way: its boot chain is
-#     IPL -> BL31 -> BL32/OP-TEE -> BL33/U-Boot -> Linux, each stage flashed
-#     separately as a raw .srec at a fixed offset (Flash_Yocto_Binaries_X5H.md,
-#     Table 4-1-2). By the time U-Boot runs, BL31 and OP-TEE are long since
-#     started - U-Boot never loads them. So this FIT only carries what U-Boot
-#     itself hands to Linux.
-#
-#  2. No peripheral overlays. V4H ships 13 .dtbo overlays for pluggable
-#     cameras/displays/fans that boot.cmd autodetects over I2C. Ironhide has
-#     no equivalent pluggable set; what it has is four full device tree
-#     variants (plain / -uio / -uio-ca / -coresight), so each is a complete
-#     fdt node with its own configuration rather than an overlay.
+# Assemble a U-Boot fitImage for the R-Car X5H Ironhide.
+# Contents: kernel, four device trees, optional ramdisk, boot script.
+# Each device tree is its own FIT configuration. BL31 is not in this image.
 #
 set -uo pipefail
 
@@ -40,8 +22,7 @@ if [ "${PLATFORM}" != "RCAR-X5H-IRONHIDE" ]; then
 fi
 
 MKIMAGE="${MKIMAGE:-mkimage}"
-# Real addresses from this project's own bootcmd, not placeholders - see
-# 01_Yocto_Full_Build_X5H.md.
+# Where bootm copies the kernel and the dtb. boot.cmd loads the FIT clear of them.
 FIT_KERNEL_LOADADDR="${FIT_KERNEL_LOADADDR:-0x9E680000}"
 FIT_DTB_LOADADDR="${FIT_DTB_LOADADDR:-0x9E600000}"
 WITH_INITRAMFS=0
@@ -64,11 +45,9 @@ KERNEL_IMAGE="arch/arm64/boot/Image"
 # "<config name>|<fdt node label>|<dtb file name>|<description>"
 # The first entry is the default configuration.
 #
-# Note: r8a78000-ironhide-npu.dtb is NOT here. It is required for NPU
-# inference but is not produced by the kernel build at all - it only ships
-# prebuilt in the SDK's Linux BSP tarball (confirmed by grepping the whole
-# meta-renesas tree). If you need it, add it to FIT_DTBS by hand after
-# copying it into the kernel's dts directory.
+# r8a78000-ironhide-npu.dtb is not built by the kernel. It ships in the SDK
+# Linux BSP tarball. Copy it into the kernel dts directory and add it here
+# when an NPU configuration is required.
 FIT_DTBS=(
 	"default|fdt-1|${BOARD_DTB}.dtb|CA core only, UIO disabled (native drivers)"
 	"uio|fdt-uio|${BOARD_DTB}-uio.dtb|CA + CR cores, UIO enabled"
@@ -143,8 +122,7 @@ stage_inputs() {
 		install -m 644 "${INITRAMFS_CPIO}" "${FIT_OUTPUT_DIR}/${INITRAMFS_NAME}"
 		WITH_INITRAMFS=1
 	else
-		# Not a warning on X5H: the initramfs target is not implemented, and
-		# the normal rootfs is on eMMC/UFS, which needs no initramfs.
+		# The usual rootfs is on eMMC/UFS, so a ramdisk is optional.
 		echo "No initramfs staged (INITRAMFS_CPIO=${INITRAMFS_CPIO:-unset})."
 		echo "  The fitImage is generated without a ramdisk."
 	fi
@@ -233,8 +211,8 @@ gen_its() {
 		echo ''
 		echo '	configurations {'
 		echo '		default = "default";'
-		# One configuration per device tree variant. No "loadables" entry:
-		# unlike V4H, BL31 is not part of this image (see the header).
+		# One configuration per device tree. No loadables entry: BL31 is not
+		# in this image.
 		for entry in "${FIT_DTBS[@]}"; do
 			IFS='|' read -r name label dtb desc <<<"${entry}"
 			echo "		${name} {"

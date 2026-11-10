@@ -95,7 +95,7 @@ Option:
             <sub_command>:
                 - all   (fetch if needed, then build)
                 - image (same as all)
-                - fetch (re-clone at the pinned revision)
+                - fetch (check out the pinned revision; stops if the tree is dirty)
                 - clean
 
         3. optee
@@ -104,7 +104,7 @@ Option:
             <sub_command>:
                 - all   (fetch if needed, then build)
                 - image (same as all)
-                - fetch (re-clone at the pinned revision)
+                - fetch (check out the pinned revision; stops if the tree is dirty)
                 - clean
 
         4. uboot
@@ -113,7 +113,7 @@ Option:
             <sub_command>:
                 - all   (fetch if needed, then build)
                 - image (same as all)
-                - fetch (re-clone at the pinned revision)
+                - fetch (check out the pinned revision; stops if the tree is dirty)
                 - clean
 
         5. initramfs
@@ -163,7 +163,7 @@ offset with the Flash Programmer; by the time U-Boot runs, BL31 and OP-TEE
 have already started. So unlike the V4H scripts this was ported from, the
 fitImage carries **only** what U-Boot hands to Linux — there is no `atf-1`
 node and no `BL31_BIN` input. Flash offsets and load addresses are in
-[`AGENTS.md`](../AGENTS.md) under "Boot contract".
+[`README.md`](../README.md#boot-contract) under "Boot contract".
 
 Each device tree variant is a full DTB and its own FIT configuration, listed
 in `FIT_DTBS` in `build_fitimage.sh`:
@@ -330,6 +330,7 @@ FIT image settings, only used by the `fitimage` target:
 - **FIT_ITS**: Optional path to a hand-written image tree source, used instead of the generated one.
 - **BL31_BIN**: Not used on X5H — kept commented out for reference only.
 
-Initramfs and out-of-tree module settings (`BUSYBOX_URL`/`BUSYBOX_SHA256`,
-and the commented-out V4H `CMEM_*`/`QOS_*`/`GLES_*` values) are kept for
-whoever implements those targets for X5H. They are not used today.
+`BUSYBOX_URL`/`BUSYBOX_SHA256` are kept for whoever implements the initramfs
+target for X5H. They are not used today. The V4H `CMEM_*`/`QOS_*`/`GLES_*`
+pins are only in git history:
+`git show ubuntu/rcar-v4h-sh:local-build-scripts/config.ini`.
