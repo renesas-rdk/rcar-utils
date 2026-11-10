@@ -8,18 +8,16 @@ source, with no Yocto or bitbake anywhere.
 This branch (`ubuntu/rcar-x5h-ironhide`) is a port of `ubuntu/rcar-v4h-sh`, which
 targets the R-Car V4H Sparrow Hawk. The structure is the same; the board facts,
 the boot architecture and two of the targets are not - see
-[AGENTS.md](AGENTS.md).
+[Boot contract](#boot-contract) below.
 
 ## Hierarchy
 
 ```
 .
-├── .claude/skills/         AI agent skills (see "AI Agent Skills" below)
 ├── linux-sh/               kernel source, cloned on demand (gitignored)
 ├── local-build-scripts/
 ├── scripts/                rcar-driver.sh and helpers
 ├── workspace/              everything the build produces (gitignored)
-├── AGENTS.md               the authoritative orientation doc
 ├── LICENSE
 └── README.md
 ```
@@ -78,43 +76,43 @@ exit 1 with an explanation rather than appearing to work:
 to a running board over ssh. BL31, OP-TEE and U-Boot are not deployed this way:
 they are flashed as raw `.srec` at fixed offsets with the Flash Programmer,
 which needs USB/serial and physical DIP switch access. The addresses are in
-AGENTS.md under "Boot contract".
+[Boot contract](#boot-contract).
 
-## AI Agent Skills
+## Boot contract
 
-These scripts ship with a set of *AI Agent Skills* so an AI agent (Claude,
-Codex, GitHub Copilot, etc.) can set up, build, verify, and deploy the Linux
-kernel and related components for this board.
-
-Each skill lives in `.claude/skills/<name>/SKILL.md` and is picked up
-automatically when an AI agent runs from the root of this repository.
-
-| Skill | Purpose | Use when |
-| --- | --- | --- |
-| `rcar-quick-start` | Entry point; orients you in the repo and dispatches to the right skill | New to the repo, or unsure which skill applies |
-| `rcar-setup-workspace` | Install host packages, clone `linux-sh`, stage firmware blobs, run preflight | Fresh host/container, or a build fails on a missing tool |
-| `rcar-build` | Build kernel, dtbs, modules, BL31, OP-TEE, U-Boot, fitImage | Building or rebuilding after a source change |
-| `rcar-customize-kernel-config` | Edit the defconfig / config fragment, menuconfig, `KERNEL_VARIANT` | Enabling or disabling a driver or kernel feature |
-| `rcar-customize-devicetree` | Edit the board `.dts` files and the four device tree variants | Changing the board hardware description |
-| `rcar-customize-boot` | Edit `boot.cmd`, FIT configuration selection, load addresses | Controlling which device tree is used at boot |
-| `rcar-customize-bootchain` | TF-A BL31 and OP-TEE: revisions, build flags, flash offsets | Changing the secure-world boot stages |
-| `rcar-customize-uboot` | U-Boot: revision, defconfig, the MP-PHY firmware dependency | Changing U-Boot itself |
-| `rcar-customize-extmodules` | Out-of-tree modules - **not implemented for X5H** | Picking up that unfinished port |
-| `rcar-customize-initramfs` | Initramfs - **not implemented for X5H** | Picking up that unfinished port |
-| `rcar-print-build-info` | Print current build state: resolved paths, artifacts, sizes, times | Answering "what is built right now?" |
-| `rcar-verify-build` | Verify artifacts without a board: fitImage, dtbs, `modules.dep`, boot chain | After any build, before deploying |
-| `rcar-deploy-image` | Back up, rsync fitImage/modules over ssh, reboot, confirm new kernel | Pushing a finished build to real hardware |
-| `rcar-verify-hardware` | Check the live board: selected FIT config, device tree nodes, driver binding | After deploy, or validating a device tree change on hardware |
-
-### Typical flow
+X5H boots a standard ARM TF-A chain. Every stage before Linux is flashed
+separately as a raw S-record at a fixed offset:
 
 ```
-rcar-setup-workspace
-  -> rcar-customize-*      (kernel-config | devicetree | boot | bootchain | uboot)
-  -> rcar-build
-  -> rcar-verify-build
-  -> rcar-deploy-image
-  -> rcar-verify-hardware
+IPL (RSIP-M BL2 -> SI-BL2 -> 2nd IPL) -> BL31/TF-A -> BL32/OP-TEE -> BL33/U-Boot -> Linux
 ```
 
-Start with `rcar-quick-start` if you are not sure which step you are on.
+| Artifact | Flash module | Flash address | Load address |
+|---|---|---|---|
+| `apu-bl31-ironhide.srec` | UFS | `0x06C00000` | `0x104C200000` |
+| `apu-tee-ironhide.srec` | UFS | `0x06D00000` | `0x104C400000` |
+| `u-boot-elf-ironhide.srec` | UFS | `0x06F00000` | `0x104E300000` |
+
+Source: SDK startup guide, "Table 4-1-2: Information list of X5H image".
+Flashing uses the Flash Programmer over USB/serial with the DIP switches in
+SCIF download mode.
+
+Unlike V4H, where U-Boot loads BL31 from the fitImage (`loadables = "atf-1"`),
+BL31 and OP-TEE have already run by the time U-Boot starts. The fitImage holds
+only the kernel, the device trees and an optional ramdisk. Do not add an
+`atf-1` node to it.
+
+U-Boot then loads the fitImage and boots one configuration:
+
+```
+load mmc 0:1 ${loadaddr} fitImage && source ${loadaddr}:script
+bootm ${fitaddr}#${fitconf}      # fitconf: default | uio | uio-ca | coresight
+```
+
+The first line only runs the embedded `boot.cmd`. That script loads the
+fitImage again at `${fitaddr}`, `0xA2600000` by default, not at `${loadaddr}`.
+Stock X5H U-Boot sets `loadaddr=0x9E600000`, which is the FIT dtb load address
+and just below the kernel (`0x9E680000`), so `bootm` would copy both on top of
+the FIT it is reading. `0xA2600000` is the start of the Linux CMA region: unused
+while U-Boot runs, and clear of the kernel, `cr52_ca720_share` and relocated
+U-Boot. This address has not been tried on real Ironhide hardware yet.
