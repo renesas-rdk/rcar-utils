@@ -38,6 +38,9 @@ else
 			"bl31")
 				./build_bl31.sh "${2}"
 				;;
+			"uboot")
+				./build_uboot.sh "${2}"
+				;;
 			*)
 				show_help
 				;;

@@ -30,10 +30,12 @@ CMEM_SRCREV="${CMEM_SRCREV:-e67f473cddb089f71abead8bf18f618d42f515da}"
 CMEM_BSIZE="${CMEM_BSIZE:-0x20000000}"
 QOS_URL="${QOS_URL:-https://github.com/renesas-rcar/qos_drv.git}"
 QOS_SRCREV="${QOS_SRCREV:-72a861aab57e0529b0f24ea2febdaa7afce52fda}"
-GLES_URL="${GLES_URL:-https://github.com/rcar-community/rcar-gfx/raw/daf8608d920fbf1d179abab8a52cbc0f022c98a1/gfxdrv/GSX_KM_V4H_SparrowHawk.tar.bz2}"
-GLES_SHA256="${GLES_SHA256:-f7a4dee2ed239970425728a48f9c4ed1918e1385e23547635811983a95f9306d}"
-GLES_FW_URL="${GLES_FW_URL:-https://github.com/rcar-community/rcar-gfx/raw/daf8608d920fbf1d179abab8a52cbc0f022c98a1/opengl/r8a779g3_linux_gsx_binaries_gles.tar.bz2}"
-GLES_FW_SHA256="${GLES_FW_SHA256:-6da8b5ca8d09ea7690f61340a5c5fbe8a13fb810e99be926969a0d5602591293}"
+# One rcar-gfx revision for both tarballs: module and firmware must match.
+GLES_REVISION="${GLES_REVISION:-a1c4f4a0ca8516c9475c80e9657f617d100c94b2}"
+GLES_URL="${GLES_URL:-https://github.com/rcar-community/rcar-gfx/raw/${GLES_REVISION}/gfxdrv/GSX_KM_V4H_SparrowHawk.tar.bz2}"
+GLES_SHA256="${GLES_SHA256:-92a2be149a900f06b94aecc12e4ec768eec2a231c31c0f5719245d4cc75fedf2}"
+GLES_FW_URL="${GLES_FW_URL:-https://github.com/rcar-community/rcar-gfx/raw/${GLES_REVISION}/opengl/r8a779g3_linux_gsx_binaries_gles.tar.bz2}"
+GLES_FW_SHA256="${GLES_FW_SHA256:-d1ca1d4c7504c89940c053bb64396eecc78179bcb0da7f64fc6d8f949c457980}"
 
 # "<name>|<git|tar>|<url>|<srcrev or sha256>|<build subdir>|<.ko glob>|<install subdir>"
 # The build subdir and the .ko glob are relative to the module source
@@ -50,6 +52,15 @@ export KERNELDIR="${KERNEL_DIR}"
 export KERNEL_SRC="${KERNEL_DIR}"
 export LDFLAGS=""
 export CP="cp"
+
+# PowerVR build configuration. The DDK makefile
+# defaults to WINDOW_SYSTEM=nullws_drm, so these are set explicitly. Only the
+# gles makefiles read them; cmem and qos ignore them.
+export PVR_BUILD_DIR="r8a779g_linux"
+export RGX_BVNC="30.3.408.101"
+export WINDOW_SYSTEM="lws-generic"
+export DISPLAY_CONTROLLER=""
+export PDUMP="0"
 
 # Must match build_kernel.sh: without it scripts/setlocalversion appends a '+'
 # and the modules would land in a different /lib/modules/<release> directory
@@ -150,6 +161,48 @@ fetch_tarball() {
 	echo "${tarball}"
 }
 
+# Extract gpu firmware
+extract_gpu_firmware() {
+	local tarball="$1" tmp="$2" fwdir
+	for fwdir in rogue/usr/lib/firmware rogue/lib/firmware; do
+		# A missing member is expected for the layout that is not used.
+		if tar xf "${tarball}" -C "${tmp}" "${fwdir}/rgx.fw.${RGX_BVNC}" 2>/dev/null; then
+			tar xf "${tarball}" -C "${tmp}" "${fwdir}/rgx.sh.${RGX_BVNC}" 2>/dev/null
+			echo "${tmp}/${fwdir}"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# Install the GPU firmware into <dest>/usr/lib/firmware. pvrsrvkm does not start
+# without the firmware of its own release
+install_gpu_firmware() {
+	local dest="$1" fwtar fwtmp fwsrc name rc=0
+	if ! fwtar="$(fetch_tarball "${GLES_FW_URL}" "${GLES_FW_SHA256}")"; then
+		echo "Error: could not fetch the GPU firmware ${GLES_FW_URL}"
+		return 1
+	fi
+	fwtmp="$(mktemp -d)" || return 1
+	if fwsrc="$(extract_gpu_firmware "${fwtar}" "${fwtmp}")"; then
+		for name in "rgx.fw.${RGX_BVNC}" "rgx.sh.${RGX_BVNC}"; do
+			[ -f "${fwsrc}/${name}" ] || continue
+			install -Dm 644 "${fwsrc}/${name}" \
+				"${dest}/usr/lib/firmware/${name}" || rc=1
+			echo "  usr/lib/firmware/${name}"
+		done
+	else
+		echo "Error: no rgx.fw.${RGX_BVNC} in ${fwtar}"
+		rc=1
+	fi
+	rm -rf "${fwtmp}"
+	if [ ! -f "${dest}/usr/lib/firmware/rgx.fw.${RGX_BVNC}" ]; then
+		echo "Error: ${dest}/usr/lib/firmware/rgx.fw.${RGX_BVNC} is missing"
+		rc=1
+	fi
+	return ${rc}
+}
+
 fetch_one() {
 	local name="$1" type="$2" url="$3" rev="$4"
 	case "${type}" in
@@ -188,6 +241,7 @@ mk_fetch() {
 
 mk_build() {
 	kernel_is_built
+	echo "Kernel release: $(kernel_release)"
 	local entry name type url rev sub
 	echo '|============================================|'
 	echo '|        Build out-of-tree modules           |'
@@ -248,24 +302,7 @@ mk_install() {
 	# pvrsrvkm refuses to initialise unless the GPU firmware comes from the
 	# same DDK release: it checks the firmware header and bails out with
 	# "KM and FW version mismatch".
-	local fwtar fwtmp
-	if fwtar="$(fetch_tarball "${GLES_FW_URL}" "${GLES_FW_SHA256}")"; then
-		fwtmp="$(mktemp -d)"
-		if tar xf "${fwtar}" -C "${fwtmp}" rogue/lib/firmware 2>/dev/null; then
-			local fw
-			for fw in "${fwtmp}"/rogue/lib/firmware/*; do
-				[ -f "${fw}" ] || continue
-				install -Dm 644 "${fw}" "${dest}/usr/lib/firmware/$(basename "${fw}")"
-				echo "  usr/lib/firmware/$(basename "${fw}")"
-			done
-		else
-			echo "Warning: no rogue/lib/firmware in ${fwtar}, GPU firmware not installed"
-		fi
-		rm -rf "${fwtmp}"
-	else
-		echo "Warning: could not fetch the GPU firmware; pvrsrvkm will fail to"
-		echo "         initialise unless a matching rgx.fw is already installed."
-	fi
+	install_gpu_firmware "${dest}" || exit 1
 
 	# Public headers needed by applications using these drivers.
 	local hdr

@@ -12,6 +12,7 @@ and FIT image (`PLATFORM=RCAR-V4H-SH`).
 ├── build_fitimage.sh
 ├── build_initramfs.sh
 ├── build_kernel.sh
+├── build_uboot.sh
 ├── common.sh
 ├── config.ini
 ├── fit/
@@ -22,10 +23,10 @@ and FIT image (`PLATFORM=RCAR-V4H-SH`).
 ├── main_build.sh
 ├── patches/
 │   ├── cmem/
-│   └── qos/
+│   ├── gles/
+│   ├── qos/
+│   └── u-boot/
 └── README.md
-
-7 directories, 11 files
 ```
 
 ## Prerequisites
@@ -48,6 +49,13 @@ sudo apt install \
     curl \
     git \
     device-tree-compiler
+```
+
+The `uboot` target also needs (binman, mkimage and the host tools):
+
+```bash
+sudo apt install swig python3-dev python3-pyelftools python3-setuptools \
+    libgnutls28-dev
 ```
 
 ## Usage
@@ -75,7 +83,7 @@ Option:
 
         2. ext-modules
             Build the pinned out-of-tree modules cmemdrv, qos and pvrsrvkm.
-            Requires a built kernel.
+            Requires 'kernel modules' (Module.symvers); 'kernel all'
             <sub_command>:
                 - all     (fetch if needed, then build)
                 - fetch   (re-clone at the pinned revision and re-apply patches)
@@ -107,6 +115,18 @@ Option:
                 - image (assemble the fitImage from an existing kernel build)
                 - clean
 
+        6. uboot
+            Build U-Boot (flash.bin with SPL and U-Boot proper) at the
+            pinned revision. Build only: nothing is written to
+            the board flash. UBOOT_SRC_DIR is owned by the script: every
+            all/fetch resets it, local changes are discarded.
+            <sub_command>:
+                - all   (fetch if needed, reset and patch the source,
+                         configure, build, install)
+                - fetch (fetch the pinned revision and reset the source)
+                - clean (reset the source, remove the build directory and
+                         the U-Boot files in UBOOT_OUTPUT_DIR)
+
 For example:
     Build all images (Kernel image and device tree) for the Linux Kernel:
         $ ./main_build.sh kernel all
@@ -127,6 +147,43 @@ For example:
 
 Note: No configuration is needed to build. See config.ini for the layout.
 ```
+
+## U-Boot
+
+`./main_build.sh uboot all` builds U-Boot v2026.10:
+
+- source pinned at `UBOOT_SRCREV`, the patches in `patches/u-boot/series`
+  applied with `git apply` (no commits);
+- `r8a779g3_sparrowhawk_defconfig`, then the fragments merged with
+  `merge_config.sh` in this order: `nfs_cmd`, `mmc_boot`, `preboot`,
+  `env_source_file`;
+- the environment comes from `patches/u-boot/sparrowhawk.env`;
+- an empty `.scmversion`, so the version is plain `2026.10`, and
+  `-fmacro-prefix-map`/`-fdebug-prefix-map` flags in `CC` that hide the build
+  paths.
+
+Outputs in `UBOOT_OUTPUT_DIR` (`workspace/u-boot-release` by default):
+`flash.bin`, `u-boot.bin`, `u-boot-elf.srec`, `u-boot-initial-env` and
+`u-boot.config`. The script only builds: writing `flash.bin` to the QSPI
+flash of the board is a separate step.
+
+Set `SOURCE_DATE_EPOCH` to get the same build date string in every build.
+
+The three U-Boot directories are owned by the script, and it refuses to start
+when they are unsafe:
+
+- `UBOOT_SRC_DIR` must be new, empty, or a clone the script made itself
+  (marked in its own local git config). Every `all` and `fetch`
+  resets that clone with `git checkout -f` and `git clean -xfd`, so local
+  changes are discarded. An existing directory or a U-Boot clone of your own
+  is refused, never reset.
+- `UBOOT_BUILD_DIR` is emptied on every build, but only when it carries the
+  `.rcar-utils-uboot-build` marker the script writes; a non-empty directory
+  without it is refused.
+- `clean` removes only the five U-Boot files from `UBOOT_OUTPUT_DIR`, then the
+  directory itself if it is empty.
+- The three directories must be separate (none inside another) and none of
+  them may be `/`, `$HOME`, `WORKSPACE_DIR` or the rcar-utils checkout.
 
 ## Kernel configuration
 
@@ -172,6 +229,9 @@ ready to build:
     ├── kernel-modules/           installed modules, their .conf files and firmware
     ├── ext-modules/              cmem, qos and gles sources
     ├── arm-trusted-firmware/     TF-A source and release/bl31-sparrow-hawk.bin
+    ├── u-boot/                   U-Boot source
+    ├── u-boot-build/             U-Boot build directory
+    ├── u-boot-release/           flash.bin and the other U-Boot outputs
     ├── initramfs/                busybox tree and uInitramfs.cpio.gz
     ├── fitimage/                 FIT inputs and fitImage
     └── downloads/                checksum-verified download cache
@@ -185,8 +245,26 @@ about to use and asks before cloning:
 ```
 No kernel source found at <rcar-utils>/linux-sh.
   repository: https://github.com/renesas-rdk/linux-sh.git
-  branch:     ubuntu/rcar-v4h-sh
+  branch:     ubuntu/rcar-v4h-sh-v6.18.54-2026-09-28
 Clone it now? [y/N]
+```
+
+#### Switching an existing linux-sh
+
+An existing `linux-sh/` is used as it is, whatever branch it has checked out.
+When that is not `KERNEL_BRANCH` the kernel build prints a warning (an older
+branch builds an older kernel with the same `-rcarv4h-sh` suffix). A clone
+made with `--single-branch` only knows its own branch, so add the new one
+first:
+
+```bash
+cd linux-sh
+BRANCH=ubuntu/rcar-v4h-sh-v6.18.54-2026-09-28
+git remote set-branches --add origin "$BRANCH"
+git fetch origin "$BRANCH"
+git checkout -b "$BRANCH" "origin/$BRANCH"
+cd ..
+./scripts/rcar-driver.sh build kernel defconfig    # .config from the new branch
 ```
 
 ### config.ini
@@ -194,7 +272,8 @@ Clone it now? [y/N]
 This configuration file contains the configurations for the build. Please make sure that you review all the settings carefully before performing a build.
 
 - **PLATFORM**: Select the supported platform (`RCAR-V4H-SH`).
-- **KERNEL_LOCALVERSION**: Suffix appended to `uname -r`.
+- **KERNEL_LOCALVERSION**: Optional suffix for `uname -r`. Commented out by default, so the
+  kernel branch's own `CONFIG_LOCALVERSION` is used (release `6.18.54-rcarv4h-sh`).
 
 Paths, all optional. They are commented out in `config.ini` because the file is
 sourced by the scripts, so even an empty assignment would overwrite the
@@ -210,6 +289,12 @@ ARM Trusted Firmware settings, only used by the `bl31` target:
 
 - **TFA_URL** / **TFA_SRCREV**: TF-A source and pinned revision.
 - **TFA_OUTPUT_DIR**: Where `bl31-sparrow-hawk.{bin,elf,srec}` are written. Defaults to `${TFA_SRC_DIR}/release`.
+- **TFA_CC_FLAGS**: Flags added to `CC`. Commented out in `config.ini`; unset means the default flags in `build_bl31.sh`, empty (`TFA_CC_FLAGS= ./main_build.sh bl31 all`) means the TF-A makefile flags only.
+
+U-Boot settings, only used by the `uboot` target:
+
+- **UBOOT_URL** / **UBOOT_SRCREV** / **UBOOT_DEFCONFIG**: U-Boot source, pinned revision and defconfig.
+- **UBOOT_SRC_DIR** / **UBOOT_BUILD_DIR** / **UBOOT_OUTPUT_DIR**: Source, build and output directories, under `WORKSPACE_DIR` by default. Owned by the script, see [U-Boot](#u-boot).
 
 Initramfs settings, used by the `initramfs` target:
 
