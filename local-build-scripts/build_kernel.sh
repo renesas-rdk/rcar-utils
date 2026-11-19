@@ -107,14 +107,11 @@ mk_config_merged() {
 
 	merged="$(mktemp -t rcar-merged-config.XXXXXX)"
 	cat "${defconfig_file}" "${fragment_file}" > "${merged}"
-	# Last assignment wins, so pin the local version here.
-	{
-		echo "CONFIG_LOCALVERSION_AUTO=n"
-		echo "CONFIG_LOCALVERSION=\"${KERNEL_LOCALVERSION:--arm64-renesas}\""
-	} >> "${merged}"
-	# The variant fragment goes last of all: it is meant to override the board
-	# configuration, and its CONFIG_LOCALVERSION has to beat the one just
-	# written above.
+	# The branch sets CONFIG_LOCALVERSION
+	echo "CONFIG_LOCALVERSION_AUTO=n" >> "${merged}"
+	if [ -n "${KERNEL_LOCALVERSION:-}" ]; then
+		echo "CONFIG_LOCALVERSION=\"${KERNEL_LOCALVERSION}\"" >> "${merged}"
+	fi
 	if [ -n "${VARIANT_FRAGMENT}" ]; then
 		cat "${VARIANT_FRAGMENT}" >> "${merged}"
 	fi
@@ -131,11 +128,19 @@ mk_config_merged() {
 	fi
 }
 
+# Print the release the configured kernel will have: version + CONFIG_LOCALVERSION.
+show_release() {
+	local localversion
+	localversion="$(grep '^CONFIG_LOCALVERSION=' .config | cut -d'"' -f2)"
+	echo "Kernel release: $(make -s kernelversion)${localversion}${LOCALVERSION:-}"
+}
+
 mk_image() {
 	echo '|============================================|'
 	echo '|          Build IMAGE ARM64 RENESAS         |'
 	echo '|============================================|'
 	make -j"$(nproc)" Image || exit 1
+	echo "Built kernel release: $(cat include/config/kernel.release)"
 }
 
 mk_dtbs() {
@@ -172,6 +177,7 @@ config_generate() {
 		make "${DEFCONFIG}" || exit 1
 	fi
 	cp .config "${CONFIG_STAMP}" || exit 1
+	show_release
 }
 
 # True when .config holds something other than what this script generated - a
@@ -210,6 +216,7 @@ mk_defconfig() {
 	echo "Run './main_build.sh kernel defconfig' to discard it and start again"
 	echo "from ${DEFCONFIG}."
 	make olddefconfig || exit 1
+	show_release
 }
 
 # Asking for "defconfig" explicitly means starting again from the tracked
@@ -294,11 +301,31 @@ mk_modules_install() {
 	echo "Installed kernel modules to ${KERNEL_MODULES_OUTPUT_DIR}"
 }
 
+# Warn when the kernel tree is a git checkout of another branch than KERNEL_BRANCH
+warn_if_other_branch() {
+	local branch
+	# No .git here: not a clone (a .git higher up belongs to rcar-utils).
+	[ -e "${KERNEL_DIR}/.git" ] || return 0
+	branch="$(git -C "${KERNEL_DIR}" rev-parse --abbrev-ref HEAD 2>/dev/null)" || return 0
+	[ "${branch}" = "${KERNEL_BRANCH}" ] && return 0
+	if [ "${branch}" = "HEAD" ]; then
+		branch="detached HEAD $(git -C "${KERNEL_DIR}" rev-parse --short HEAD)"
+	fi
+	echo '|============================================|'
+	echo '|  WARNING: kernel tree on another branch    |'
+	echo '|============================================|'
+	echo "  ${KERNEL_DIR} is on:  ${branch}"
+	echo "  config.ini KERNEL_BRANCH: ${KERNEL_BRANCH}"
+	echo "  The kernel is built from what is checked out. To switch, see"
+	echo "  'Switching an existing linux-sh' in local-build-scripts/README.md."
+}
+
 # Main Linux Kernel build
 cmd="${1:-}"
 ensure_kernel_dir || exit 1
 echo "Starting the kernel build at ${KERNEL_DIR}"
 cd "${KERNEL_DIR}" || exit 1
+warn_if_other_branch
 
 case ${cmd} in
 	'clean')

@@ -11,7 +11,7 @@ set -uo pipefail
 source ./config.ini
 source ./common.sh
 
-# if PLATFORM is already exported from main_build.sh, keep it
+# PLAT overrides PLATFORM, as in main_build.sh
 if [ -n "${PLATFORM:-}" ] && [ -n "${PLAT:-}" ]; then
 	PLATFORM="$PLAT"
 fi
@@ -23,7 +23,13 @@ if [ "${PLATFORM}" != "RCAR-V4H-SH" ]; then
 fi
 
 TFA_URL="${TFA_URL:-https://github.com/ARM-software/arm-trusted-firmware.git}"
-TFA_SRCREV="${TFA_SRCREV:-1d5aa939bc8d3d892e2ed9945fa50e36a1a924cc}"
+TFA_SRCREV="${TFA_SRCREV:-da738d5eae93af342fdc4995dd3c05acb4c9d757}"
+# Default flags passed in CC. TFA_CC_FLAGS unset = these flags,
+# set empty = none (config.ini leaves it commented out).
+DEFAULT_CC_FLAGS="-mcpu=cortex-a76+crypto -mbranch-protection=standard"
+DEFAULT_CC_FLAGS+=" -fstack-protector-strong -O2 -D_FORTIFY_SOURCE=2"
+DEFAULT_CC_FLAGS+=" -Wformat -Wformat-security -Werror=format-security"
+TFA_CC_FLAGS="${TFA_CC_FLAGS-${DEFAULT_CC_FLAGS}}"
 # TFA_SRC_DIR and TFA_OUTPUT_DIR come from common.sh.
 BL31_NAME="bl31-sparrow-hawk"
 
@@ -46,8 +52,13 @@ TFA_OPT=(
 export CROSS_COMPILE="${CROSS_COMPILE:-aarch64-linux-gnu-}"
 
 # TF-A is a standalone application whose makefiles set up their own flags;
-# inheriting host flags would break the build.
-unset CFLAGS CPPFLAGS CXXFLAGS LDFLAGS AS LD
+# inheriting host flags (or a host CC) would break the build.
+unset CFLAGS CPPFLAGS CXXFLAGS LDFLAGS AS LD CC
+
+# The default flags travel in CC.
+if [ -n "${TFA_CC_FLAGS}" ]; then
+	export CC="${CROSS_COMPILE}gcc ${TFA_CC_FLAGS}"
+fi
 
 fetch_src() {
 	if [ ! -d "${TFA_SRC_DIR}/.git" ]; then
@@ -126,6 +137,7 @@ cmd="${1:-all}"
 echo "Starting the BL31 build '${cmd}' (PLATFORM=${PLATFORM})"
 echo "Source directory: ${TFA_SRC_DIR}"
 echo "Output directory: ${TFA_OUTPUT_DIR}"
+echo "Compiler: ${CC:-${CROSS_COMPILE}gcc}"
 
 case "${cmd}" in
 	'fetch')

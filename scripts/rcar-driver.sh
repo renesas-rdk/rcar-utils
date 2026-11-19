@@ -37,6 +37,8 @@ TFA_SRC_DIR="${TFA_SRC_DIR:-${WORKSPACE_DIR}/arm-trusted-firmware}"
 TFA_OUTPUT_DIR="${TFA_OUTPUT_DIR:-${TFA_SRC_DIR}/release}"
 
 BOARD_DTB="r8a779g3-sparrow-hawk"
+# GPU firmware installed by "ext-modules install" (RGX_BVNC of build_ext_modules.sh).
+GPU_FW="rgx.fw.30.3.408.101"
 
 PASS=0
 FAIL=0
@@ -45,6 +47,29 @@ ok()   { printf '  \033[32mok\033[0m    %s\n' "$*"; PASS=$((PASS + 1)); }
 bad()  { printf '  \033[31mFAIL\033[0m  %s\n' "$*"; FAIL=$((FAIL + 1)); }
 note() { printf '        %s\n' "$*"; }
 head_() { printf '\n\033[1m%s\033[0m\n' "$*"; }
+
+# KERNEL_BRANCH as the build scripts see it (config.ini, then the common.sh default).
+config_kernel_branch() {
+	(
+		cd "${SCRIPTS_DIR}" || exit 1
+		source ./config.ini
+		source ./common.sh
+		echo "${KERNEL_BRANCH}"
+	)
+}
+
+# Note the branch of the kernel tree; a warning when it is not KERNEL_BRANCH.
+note_kernel_branch() {
+	local want="$1" have
+	[ -e "${KERNEL_DIR}/.git" ] || return 0
+	have=$(git -C "${KERNEL_DIR}" rev-parse --abbrev-ref HEAD 2>/dev/null)
+	if [ "$have" = "$want" ]; then
+		note "branch ${have}"
+	else
+		note "WARNING: kernel tree is on '${have}', config.ini expects '${want}'"
+		note "See 'Switching an existing linux-sh' in local-build-scripts/README.md"
+	fi
+}
 
 #-----------------------------------------------------------------------------
 # preflight
@@ -74,10 +99,11 @@ do_preflight() {
 	head_ "Sources"
 	if [ -f "${KERNEL_DIR}/Makefile" ] && [ -d "${KERNEL_DIR}/arch/arm64" ]; then
 		ok "kernel source at ${KERNEL_DIR}"
+		note_kernel_branch "$(config_kernel_branch)"
 	else
 		bad "no kernel source at ${KERNEL_DIR}"
 		note "The build only offers to clone it when stdin is a TTY. Non-interactively:"
-		note "  git clone --single-branch --branch ubuntu/rcar-v4h-sh \\"
+		note "  git clone --single-branch --branch $(config_kernel_branch) \\"
 		note "      https://github.com/renesas-rdk/linux-sh.git ${KERNEL_DIR}"
 	fi
 }
@@ -284,6 +310,14 @@ verify_modules() {
 		ok "PCIe PHY firmware staged with the modules"
 	else
 		bad "usr/lib/firmware/rcar_gen4_pcie.bin missing from the module tree"
+	fi
+
+	# pvrsrvkm does not start without the firmware of its own GLES release.
+	if [ -f "${KERNEL_MODULES_OUTPUT_DIR}/usr/lib/firmware/${GPU_FW}" ]; then
+		ok "GPU firmware ${GPU_FW} staged with the modules"
+	else
+		bad "usr/lib/firmware/${GPU_FW} missing from the module tree"
+		note "run: rcar-driver.sh build ext-modules install"
 	fi
 }
 
