@@ -52,9 +52,14 @@ clone **when stdin is a TTY**. Non-interactively it prints the command and
 exits 1 (`common.sh` checks `[ ! -t 0 ]`). Pre-clone it once:
 
 ```bash
-git clone --single-branch --branch ubuntu/rcar-v4h-sh \
+BRANCH=$(cd local-build-scripts && source ./config.ini && echo "$KERNEL_BRANCH")
+git clone --single-branch --branch "$BRANCH" \
     https://github.com/renesas-rdk/linux-sh.git linux-sh
 ```
+
+An existing `linux-sh/` on another branch is still used (the kernel build and
+`preflight` only warn). Switch it as in "Switching an existing linux-sh" in
+`local-build-scripts/README.md`.
 
 To build against a tree you already have, set `KERNEL_DIR` per run or uncomment
 it in `config.ini`.
