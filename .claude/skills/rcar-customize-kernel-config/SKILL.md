@@ -27,9 +27,11 @@ Every kernel target configures first through `build_kernel.sh` and
 1. `arch/arm64/configs/sparrow_hawk_defconfig` and
    `arch/arm64/configs/sparrow_hawk.config` are **concatenated** into a temp
    file (`mktemp -t rcar-merged-config.XXXXXX`, so `$TMPDIR` or `/tmp`).
-2. Two lines are appended last, so they always win:
-   `CONFIG_LOCALVERSION_AUTO=n` and
-   `CONFIG_LOCALVERSION="${KERNEL_LOCALVERSION}"` (default `-arm64-renesas`).
+2. `CONFIG_LOCALVERSION_AUTO=n` is appended, and
+   `CONFIG_LOCALVERSION="${KERNEL_LOCALVERSION}"` only when
+   `KERNEL_LOCALVERSION` is set. It is commented out in `config.ini`, so by
+   default the branch's own `-rcarv4h-sh` is kept (release
+   `6.18.54-rcarv4h-sh`).
 3. `make KCONFIG_ALLCONFIG=<merged> alldefconfig` fills in every other symbol.
 
 **Last assignment wins.** The fragment overrides the defconfig, which is what
@@ -61,7 +63,7 @@ fragment and the `CONFIG_LOCALVERSION` lines - so it overrides all of them and
 can give the kernel its own `uname -r`.
 
 `preempt-rt` ships today: `CONFIG_PREEMPT_RT=y`, release
-`<version>-arm64-renesas-rt`.
+`<version>-rcarv4h-sh-rt`.
 
 Two things to know before writing one:
 
@@ -140,7 +142,8 @@ To go back to the board configuration and throw local changes away:
 
 ## Changing the module suffix
 
-`KERNEL_LOCALVERSION` in `config.ini` (default `-arm64-renesas`) becomes the
+`KERNEL_LOCALVERSION` (commented out in `config.ini`; unset means the branch's
+`-rcarv4h-sh`) replaces the
 `uname -r` suffix and therefore the **module install path**
 `/usr/lib/modules/<version><suffix>/`.
 
@@ -157,8 +160,9 @@ that directory ships both. `rcar-driver.sh verify` flags the stale tree.
 - **`alldefconfig` silently drops an option whose dependencies are unmet.** If
   a symbol you added is absent from `.config` afterwards, check its `depends
   on` — there is no error.
-- **`CONFIG_LOCALVERSION*` in the board fragment is overridden** by the two
-  lines appended in step 2. Set `KERNEL_LOCALVERSION` in `config.ini` instead.
+- **`CONFIG_LOCALVERSION` of the board fragment is used** unless
+  `KERNEL_LOCALVERSION` is set; `CONFIG_LOCALVERSION_AUTO` is always forced to
+  `n` (step 2). The build prints the resulting `Kernel release:`.
   A `KERNEL_VARIANT` fragment is appended later and may override the suffix.
 - **`LOCALVERSION=""` is exported** by the scripts so `scripts/setlocalversion`
   does not append `+` to the release string. No `.scmversion` is needed.

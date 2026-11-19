@@ -1,0 +1,3 @@
+0001-PCI-rcar-gen4-Limit-Max_Read_Request_Size-and-Max_Pa.patch
+0002-mtd-spi-nor-ids-Add-Winbond-W77T51NW.patch
+0003-arm64-dts-renesas-r8a779g3-Remove-reserved-memory-nod.patch
