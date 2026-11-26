@@ -150,40 +150,30 @@ Note: No configuration is needed to build. See config.ini for the layout.
 
 ## U-Boot
 
-`./main_build.sh uboot all` builds U-Boot v2026.10:
+The `uboot` target builds U-Boot at the revision pinned by `UBOOT_SRCREV`,
+with the patches, configuration fragments, and default environment in
+`patches/u-boot/`. When `UBOOT_SRCREV` changes, update `DEBUG_PREFIX` in
+`build_uboot.sh` to match.
 
-- source pinned at `UBOOT_SRCREV`, the patches in `patches/u-boot/series`
-  applied with `git apply` (no commits);
-- `r8a779g3_sparrowhawk_defconfig`, then the fragments merged with
-  `merge_config.sh` in this order: `nfs_cmd`, `mmc_boot`, `preboot`,
-  `env_source_file`;
-- the environment comes from `patches/u-boot/sparrowhawk.env`;
-- an empty `.scmversion`, so the version is plain `2026.10`, and
-  `-fmacro-prefix-map`/`-fdebug-prefix-map` flags in `CC` that hide the build
-  paths.
+To build U-Boot:
 
-Outputs in `UBOOT_OUTPUT_DIR` (`workspace/u-boot-release` by default):
-`flash.bin`, `u-boot.bin`, `u-boot-elf.srec`, `u-boot-initial-env` and
-`u-boot.config`. The script only builds: writing `flash.bin` to the QSPI
-flash of the board is a separate step.
+```sh
+./main_build.sh uboot all
+```
 
-Set `SOURCE_DATE_EPOCH` to get the same build date string in every build.
+The build writes `flash.bin` and the other U-Boot outputs to
+`UBOOT_OUTPUT_DIR` (`workspace/u-boot-release` by default).
 
-The three U-Boot directories are owned by the script, and it refuses to start
-when they are unsafe:
+The script owns `UBOOT_SRC_DIR` and `UBOOT_BUILD_DIR`. Every `all` and `fetch`
+resets the source with `git checkout -f` and `git clean -xfd`, so local
+changes are discarded. The script uses only a new or empty directory, or one
+that it created itself, and refuses any other directory.
 
-- `UBOOT_SRC_DIR` must be new, empty, or a clone the script made itself
-  (marked in its own local git config). Every `all` and `fetch`
-  resets that clone with `git checkout -f` and `git clean -xfd`, so local
-  changes are discarded. An existing directory or a U-Boot clone of your own
-  is refused, never reset.
-- `UBOOT_BUILD_DIR` is emptied on every build, but only when it carries the
-  `.rcar-utils-uboot-build` marker the script writes; a non-empty directory
-  without it is refused.
-- `clean` removes only the five U-Boot files from `UBOOT_OUTPUT_DIR`, then the
-  directory itself if it is empty.
-- The three directories must be separate (none inside another) and none of
-  them may be `/`, `$HOME`, `WORKSPACE_DIR` or the rcar-utils checkout.
+To reset the source and remove the build directory and the U-Boot outputs:
+
+```sh
+./main_build.sh uboot clean
+```
 
 ## Kernel configuration
 
