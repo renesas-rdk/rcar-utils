@@ -27,11 +27,10 @@ Every kernel target configures first through `build_kernel.sh` and
 1. `arch/arm64/configs/sparrow_hawk_defconfig` and
    `arch/arm64/configs/sparrow_hawk.config` are **concatenated** into a temp
    file (`mktemp -t rcar-merged-config.XXXXXX`, so `$TMPDIR` or `/tmp`).
-2. `CONFIG_LOCALVERSION_AUTO=n` is appended, and
+2. `CONFIG_LOCALVERSION_AUTO=n` is appended, plus
    `CONFIG_LOCALVERSION="${KERNEL_LOCALVERSION}"` only when
-   `KERNEL_LOCALVERSION` is set. It is commented out in `config.ini`, so by
-   default the branch's own `-rcarv4h-sh` is kept (release
-   `6.18.54-rcarv4h-sh`).
+   `KERNEL_LOCALVERSION` is set (unset by default). Unset, the suffix comes
+   from the kernel branch's fragment (`-rcarv4h-sh`).
 3. `make KCONFIG_ALLCONFIG=<merged> alldefconfig` fills in every other symbol.
 
 **Last assignment wins.** The fragment overrides the defconfig, which is what

@@ -48,14 +48,13 @@ sudo apt install \
     cpio \
     curl \
     git \
-    device-tree-compiler
-```
-
-The `uboot` target also needs (binman, mkimage and the host tools):
-
-```bash
-sudo apt install swig python3-dev python3-pyelftools python3-setuptools \
-    libgnutls28-dev
+    device-tree-compiler \
+    swig \
+    python3-dev \
+    python3-pyelftools \
+    python3-setuptools \
+    libgnutls28-dev \
+    srecord
 ```
 
 ## Usage
@@ -83,7 +82,7 @@ Option:
 
         2. ext-modules
             Build the pinned out-of-tree modules cmemdrv, qos and pvrsrvkm.
-            Requires 'kernel modules' (Module.symvers); 'kernel all'
+            Requires a built kernel.
             <sub_command>:
                 - all     (fetch if needed, then build)
                 - fetch   (re-clone at the pinned revision and re-apply patches)
@@ -117,9 +116,7 @@ Option:
 
         6. uboot
             Build U-Boot (flash.bin with SPL and U-Boot proper) at the
-            pinned revision. Build only: nothing is written to
-            the board flash. UBOOT_SRC_DIR is owned by the script: every
-            all/fetch resets it, local changes are discarded.
+            pinned revision.
             <sub_command>:
                 - all   (fetch if needed, reset and patch the source,
                          configure, build, install)
@@ -235,7 +232,7 @@ about to use and asks before cloning:
 ```
 No kernel source found at <rcar-utils>/linux-sh.
   repository: https://github.com/renesas-rdk/linux-sh.git
-  branch:     ubuntu/rcar-v4h-sh-v6.18.54-2026-09-28
+  branch:     ubuntu/rcar-v4h-sh
 Clone it now? [y/N]
 ```
 
@@ -249,7 +246,7 @@ first:
 
 ```bash
 cd linux-sh
-BRANCH=ubuntu/rcar-v4h-sh-v6.18.54-2026-09-28
+BRANCH=ubuntu/rcar-v4h-sh
 git remote set-branches --add origin "$BRANCH"
 git fetch origin "$BRANCH"
 git checkout -b "$BRANCH" "origin/$BRANCH"
@@ -263,7 +260,7 @@ This configuration file contains the configurations for the build. Please make s
 
 - **PLATFORM**: Select the supported platform (`RCAR-V4H-SH`).
 - **KERNEL_LOCALVERSION**: Optional suffix for `uname -r`. Commented out by default, so the
-  kernel branch's own `CONFIG_LOCALVERSION` is used (release `6.18.54-rcarv4h-sh`).
+  suffix comes from the kernel branch's fragment (`-rcarv4h-sh`).
 
 Paths, all optional. They are commented out in `config.ini` because the file is
 sourced by the scripts, so even an empty assignment would overwrite the

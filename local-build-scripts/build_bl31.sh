@@ -11,7 +11,7 @@ set -uo pipefail
 source ./config.ini
 source ./common.sh
 
-# PLAT overrides PLATFORM, as in main_build.sh
+# if PLATFORM is already exported from main_build.sh, keep it
 if [ -n "${PLATFORM:-}" ] && [ -n "${PLAT:-}" ]; then
 	PLATFORM="$PLAT"
 fi

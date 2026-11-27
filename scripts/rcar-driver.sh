@@ -118,7 +118,7 @@ do_preflight() {
 do_build() {
 	if [ $# -lt 2 ]; then
 		echo "usage: rcar-driver.sh build <target> <sub_command>" >&2
-		echo "  targets: kernel ext-modules bl31 initramfs fitimage" >&2
+		echo "  targets: kernel ext-modules bl31 initramfs fitimage uboot" >&2
 		return 2
 	fi
 	head_ "Build: $1 $2"

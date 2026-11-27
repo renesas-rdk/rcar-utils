@@ -89,7 +89,7 @@ ext-modules   all | fetch | install | clean
 bl31          all | image | fetch | clean
 initramfs     all | image | busybox | clean
 fitimage      all | image | clean
-uboot         all | image | fetch | clean   (build only, never flashes)
+uboot         all | image | fetch | clean
 ```
 
 ## Setup
@@ -256,10 +256,7 @@ under `/usr/lib/modules/`, and `depmod` searches `/lib/modules`.
   output the user may still need, even when `verify` flags it as stale.
 - **`ext-modules fetch` is destructive**: it runs `git checkout -f` and
   `git clean -qxfd` in `workspace/ext-modules/<name>/`.
-- **`uboot all` and `uboot fetch` reset `UBOOT_SRC_DIR`** the same way. The
-  script only works in a directory that is new, empty, or a clone it marked
-  itself (a mark in the local git config of that clone) and refuses anything else.
-  It builds `flash.bin` writes it to the board by flash-writer.
+- **The `uboot` target only builds `flash.bin`.**
 
 ## Deeper documentation
 
