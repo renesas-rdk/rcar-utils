@@ -28,7 +28,7 @@ Shared facts: `AGENTS.md` at the repo root.
 
 ## Prerequisites
 
-A built kernel. The script checks for `linux-sh/Module.symvers` and refuses
+A built kernel. The script checks for `workspace/linux-sh/Module.symvers` and refuses
 otherwise:
 
 ```
@@ -187,7 +187,7 @@ Check a module's vermagic against the kernel release:
 
 ```bash
 modinfo workspace/ext-modules/cmem/cmemdrv.ko | grep vermagic
-cat linux-sh/include/config/kernel.release
+cat workspace/linux-sh/include/config/kernel.release
 ```
 
 ## Troubleshooting

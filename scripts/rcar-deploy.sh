@@ -25,7 +25,7 @@ DRIVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # scripts/ -> repo root
 RCAR_UTILS_DIR="$(cd "${DRIVER_DIR}/.." && pwd)"
 
-KERNEL_DIR="${KERNEL_DIR:-${RCAR_UTILS_DIR}/linux-sh}"
+KERNEL_DIR="${KERNEL_DIR:-${RCAR_UTILS_DIR}/workspace/linux-sh}"
 WORKSPACE_DIR="${WORKSPACE_DIR:-${RCAR_UTILS_DIR}/workspace}"
 FIT_OUTPUT_DIR="${FIT_OUTPUT_DIR:-${WORKSPACE_DIR}/fitimage}"
 KERNEL_MODULES_OUTPUT_DIR="${KERNEL_MODULES_OUTPUT_DIR:-${WORKSPACE_DIR}/kernel-modules}"

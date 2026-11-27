@@ -23,7 +23,8 @@ Option:
 
         2. ext-modules
             Build the pinned out-of-tree modules cmemdrv, qos and pvrsrvkm.
-            Requires a built kernel.
+            Requires 'kernel modules' (Module.symvers); 'kernel all' is
+            not enough.
             <sub_command>:
                 - all     (fetch if needed, then build)
                 - fetch   (re-clone at the pinned revision and re-apply patches)
@@ -55,6 +56,18 @@ Option:
                 - image (assemble the fitImage from an existing kernel build)
                 - clean
 
+        6. uboot
+            Build U-Boot (flash.bin with SPL and U-Boot proper) at the
+            pinned revision. Build only: nothing is written to
+            the board flash. UBOOT_SRC_DIR is owned by the script: every
+            all/fetch resets it, local changes are discarded.
+            <sub_command>:
+                - all   (fetch if needed, reset and patch the source,
+                         configure, build, install)
+                - fetch (fetch the pinned revision and reset the source)
+                - clean (reset the source, remove the build directory and
+                         the U-Boot files in UBOOT_OUTPUT_DIR)
+
 For example:
     Build all images (Kernel image and device tree) for the Linux Kernel:
         \$ ./main_build.sh kernel all
@@ -73,12 +86,13 @@ For example:
         \$ ./main_build.sh fitimage all
 
 Note: No configuration is needed to build. The kernel source is expected in
-      <rcar-utils>/linux-sh - when it is missing, the build offers to clone it -
+      <rcar-utils>/workspace/linux-sh - when it is missing, the build offers to clone it -
       and every output is written under <rcar-utils>/workspace/:
 
         workspace/kernel-modules  installed kernel modules and their firmware
         workspace/ext-modules     out-of-tree module sources
         workspace/arm-trusted-firmware
+        workspace/u-boot          U-Boot source (u-boot-build/, u-boot-release/)
         workspace/initramfs       busybox tree and uInitramfs.cpio.gz
         workspace/fitimage        FIT inputs and fitImage
         workspace/downloads       checksum-verified download cache
@@ -104,13 +118,18 @@ show_help() {
 # so the scripts work straight after a "git clone" with no configuration at
 # all. config.ini is sourced before this file, so any value set there (or
 # exported in the environment while config.ini leaves it empty) still wins.
+# Cross build for the arm64 board. Set here so every build_*.sh works when
+# run on its own, not only through main_build.sh.
+export ARCH=arm64
+export CROSS_COMPILE=aarch64-linux-gnu-
+
 COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RCAR_UTILS_DIR="$(cd "${COMMON_SH_DIR}/.." && pwd)"
 
 # Kernel source tree. Cloned on demand by ensure_kernel_dir().
-KERNEL_DIR="${KERNEL_DIR:-${RCAR_UTILS_DIR}/linux-sh}"
+KERNEL_DIR="${KERNEL_DIR:-${RCAR_UTILS_DIR}/workspace/linux-sh}"
 KERNEL_URL="${KERNEL_URL:-https://github.com/renesas-rdk/linux-sh.git}"
-KERNEL_BRANCH="${KERNEL_BRANCH:-ubuntu/rcar-v4h-sh}"
+KERNEL_BRANCH="${KERNEL_BRANCH:-ubuntu/rcar-v4h-sh-v6.18.54-2026-09-28}"
 
 # Build outputs and the sources the scripts clone themselves. Ignored by git.
 WORKSPACE_DIR="${WORKSPACE_DIR:-${RCAR_UTILS_DIR}/workspace}"
@@ -118,6 +137,9 @@ KERNEL_MODULES_OUTPUT_DIR="${KERNEL_MODULES_OUTPUT_DIR:-${WORKSPACE_DIR}/kernel-
 EXT_MODULES_SRC_DIR="${EXT_MODULES_SRC_DIR:-${WORKSPACE_DIR}/ext-modules}"
 TFA_SRC_DIR="${TFA_SRC_DIR:-${WORKSPACE_DIR}/arm-trusted-firmware}"
 TFA_OUTPUT_DIR="${TFA_OUTPUT_DIR:-${TFA_SRC_DIR}/release}"
+UBOOT_SRC_DIR="${UBOOT_SRC_DIR:-${WORKSPACE_DIR}/u-boot}"
+UBOOT_BUILD_DIR="${UBOOT_BUILD_DIR:-${WORKSPACE_DIR}/u-boot-build}"
+UBOOT_OUTPUT_DIR="${UBOOT_OUTPUT_DIR:-${WORKSPACE_DIR}/u-boot-release}"
 INITRAMFS_SRC_DIR="${INITRAMFS_SRC_DIR:-${WORKSPACE_DIR}/initramfs}"
 INITRAMFS_OUTPUT_DIR="${INITRAMFS_OUTPUT_DIR:-${INITRAMFS_SRC_DIR}}"
 FIT_OUTPUT_DIR="${FIT_OUTPUT_DIR:-${WORKSPACE_DIR}/fitimage}"

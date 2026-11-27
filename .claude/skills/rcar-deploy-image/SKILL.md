@@ -95,7 +95,7 @@ board's kernel with the real-time one" are not the same sentence.
 
 **Build the variant you intend to deploy immediately before deploying it.**
 The release string comes from the kernel tree
-(`linux-sh/include/config/kernel.release`), not from the workspace, and it is
+(`workspace/linux-sh/include/config/kernel.release`), not from the workspace, and it is
 what selects the module tree to send. The two variants take turns in that one
 tree, so a stale tree means deploying the wrong kernel's modules - or nothing,
 because the script dies with `no module tree for <release>`. `verify` fails in
@@ -233,7 +233,7 @@ On-target layout the script maintains:
 `<rel>` is whatever the build produced — never assume it:
 
 ```bash
-cat linux-sh/include/config/kernel.release
+cat workspace/linux-sh/include/config/kernel.release
 ```
 
 The `.d` files are not optional: `uio_pdrv_genirq` has a single OF match entry

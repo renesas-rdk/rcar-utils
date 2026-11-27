@@ -166,8 +166,8 @@ Checks the image is readable and contains `init`, `linuxrc`,
 Confirm the bundled module matches the kernel:
 
 ```bash
-modinfo linux-sh/drivers/pci/controller/dwc/pcie-rcar-gen4.ko | grep vermagic
-cat linux-sh/include/config/kernel.release
+modinfo workspace/linux-sh/drivers/pci/controller/dwc/pcie-rcar-gen4.ko | grep vermagic
+cat workspace/linux-sh/include/config/kernel.release
 ```
 
 Confirm busybox is static arm64:

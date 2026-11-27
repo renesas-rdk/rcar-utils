@@ -27,9 +27,10 @@ Every kernel target configures first through `build_kernel.sh` and
 1. `arch/arm64/configs/sparrow_hawk_defconfig` and
    `arch/arm64/configs/sparrow_hawk.config` are **concatenated** into a temp
    file (`mktemp -t rcar-merged-config.XXXXXX`, so `$TMPDIR` or `/tmp`).
-2. Two lines are appended last, so they always win:
-   `CONFIG_LOCALVERSION_AUTO=n` and
-   `CONFIG_LOCALVERSION="${KERNEL_LOCALVERSION}"` (default `-arm64-renesas`).
+2. `CONFIG_LOCALVERSION_AUTO=n` is appended, plus
+   `CONFIG_LOCALVERSION="${KERNEL_LOCALVERSION}"` only when
+   `KERNEL_LOCALVERSION` is set (unset by default). Unset, the suffix comes
+   from the kernel branch's fragment (`-rcarv4h-sh`).
 3. `make KCONFIG_ALLCONFIG=<merged> alldefconfig` fills in every other symbol.
 
 **Last assignment wins.** The fragment overrides the defconfig, which is what
@@ -39,7 +40,7 @@ build. That is the fragment doing its job, not a problem.
 ## The `.rcar-config.stamp` mechanism
 
 After generating `.config`, the script saves a copy as
-`linux-sh/.rcar-config.stamp`. On the next build it compares:
+`workspace/linux-sh/.rcar-config.stamp`. On the next build it compares:
 
 | State | What happens |
 |---|---|
@@ -61,7 +62,7 @@ fragment and the `CONFIG_LOCALVERSION` lines - so it overrides all of them and
 can give the kernel its own `uname -r`.
 
 `preempt-rt` ships today: `CONFIG_PREEMPT_RT=y`, release
-`<version>-arm64-renesas-rt`.
+`<version>-rcarv4h-sh-rt`.
 
 Two things to know before writing one:
 
@@ -91,7 +92,7 @@ diff shows intent.
 ## Procedure: permanent change via the fragment
 
 ```bash
-grep -n 'CONFIG_PCIE_RCAR_GEN4' linux-sh/arch/arm64/configs/sparrow_hawk.config
+grep -n 'CONFIG_PCIE_RCAR_GEN4' workspace/linux-sh/arch/arm64/configs/sparrow_hawk.config
 ```
 
 Edit the fragment, then rebuild — the generated `.config` is refreshed
@@ -112,7 +113,7 @@ initramfs must be rebuilt before the FIT is reassembled.
 Confirm the symbol landed:
 
 ```bash
-grep -E '^CONFIG_PCIE_RCAR_GEN4(_HOST)?=' linux-sh/.config
+grep -E '^CONFIG_PCIE_RCAR_GEN4(_HOST)?=' workspace/linux-sh/.config
 ```
 
 **If you had previously customized `.config`, it is kept and your fragment edit
@@ -140,7 +141,8 @@ To go back to the board configuration and throw local changes away:
 
 ## Changing the module suffix
 
-`KERNEL_LOCALVERSION` in `config.ini` (default `-arm64-renesas`) becomes the
+`KERNEL_LOCALVERSION` (commented out in `config.ini`; unset means the branch's
+`-rcarv4h-sh`) replaces the
 `uname -r` suffix and therefore the **module install path**
 `/usr/lib/modules/<version><suffix>/`.
 
@@ -157,8 +159,9 @@ that directory ships both. `rcar-driver.sh verify` flags the stale tree.
 - **`alldefconfig` silently drops an option whose dependencies are unmet.** If
   a symbol you added is absent from `.config` afterwards, check its `depends
   on` — there is no error.
-- **`CONFIG_LOCALVERSION*` in the board fragment is overridden** by the two
-  lines appended in step 2. Set `KERNEL_LOCALVERSION` in `config.ini` instead.
+- **`CONFIG_LOCALVERSION` of the board fragment is used** unless
+  `KERNEL_LOCALVERSION` is set; `CONFIG_LOCALVERSION_AUTO` is always forced to
+  `n` (step 2). The build prints the resulting `Kernel release:`.
   A `KERNEL_VARIANT` fragment is appended later and may override the suffix.
 - **`LOCALVERSION=""` is exported** by the scripts so `scripts/setlocalversion`
   does not append `+` to the release string. No `.scmversion` is needed.
@@ -170,8 +173,8 @@ that directory ships both. `rcar-driver.sh verify` flags the stale tree.
 ## Verification
 
 ```bash
-grep -E '^CONFIG_<SYMBOL>' linux-sh/.config          # option took effect
-cat linux-sh/include/config/kernel.release           # release string / suffix
+grep -E '^CONFIG_<SYMBOL>' workspace/linux-sh/.config          # option took effect
+cat workspace/linux-sh/include/config/kernel.release           # release string / suffix
 ./scripts/rcar-driver.sh verify            # artifacts still consistent
 ```
 

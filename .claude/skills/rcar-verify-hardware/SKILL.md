@@ -406,7 +406,7 @@ so it belongs in the result.
   one blob — a console line naming either is the same overlay.
 - **Do not hot-plug to make a check pass.** U-Boot probed the bus at power-on;
   connecting afterwards changes nothing in the running DT and risks the board.
-- **Never hardcode the kernel version** — `cat linux-sh/include/config/kernel.release`.
+- **Never hardcode the kernel version** — `cat workspace/linux-sh/include/config/kernel.release`.
 - **Stale module trees on the board are reported by deploy, never deleted.**
   A driver may be loading from an older release's tree.
 

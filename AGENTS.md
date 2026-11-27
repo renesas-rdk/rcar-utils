@@ -50,7 +50,7 @@ build.** Treat a failing verify as a failing build.
 It changes with the source and with `KERNEL_LOCALVERSION`. Always read it:
 
 ```bash
-REL=$(cat linux-sh/include/config/kernel.release)
+REL=$(cat workspace/linux-sh/include/config/kernel.release)
 ```
 
 ## Common tasks
@@ -89,6 +89,7 @@ ext-modules   all | fetch | install | clean
 bl31          all | image | fetch | clean
 initramfs     all | image | busybox | clean
 fitimage      all | image | clean
+uboot         all | image | fetch | clean
 ```
 
 ## Setup
@@ -102,13 +103,21 @@ sudo apt-get install -y build-essential gcc-aarch64-linux-gnu \
     kmod cpio curl git device-tree-compiler
 ```
 
+The `uboot` target also needs `swig python3-dev python3-pyelftools
+python3-setuptools libgnutls28-dev` (binman and the host tools).
+
 The kernel source is cloned on demand, but **only when stdin is a TTY** — an
 agent running non-interactively gets an error, not a clone. Pre-clone it:
 
 ```bash
-git clone --single-branch --branch ubuntu/rcar-v4h-sh \
+BRANCH=$(cd local-build-scripts && source ./config.ini && echo "$KERNEL_BRANCH")
+git clone --single-branch --branch "$BRANCH" \
     https://github.com/renesas-rdk/linux-sh.git linux-sh
 ```
+
+An existing `workspace/linux-sh/` on another branch is still used; the kernel build only
+warns. To switch it, follow "Switching an existing linux-sh" in
+`local-build-scripts/README.md`.
 
 `scripts/rcar-deploy.sh` additionally needs `sshpass` and `rsync` on the host.
 
@@ -116,20 +125,23 @@ git clone --single-branch --branch ubuntu/rcar-v4h-sh \
 
 ```
 <rcar-utils>/
-├── linux-sh/              kernel source, cloned on demand (gitignored)
 ├── local-build-scripts/   build scripts + config.ini
 ├── scripts/               rcar-driver.sh, rcar-deploy.sh  ← agent entry points
 ├── workspace/             every output (gitignored)
+│   ├── linux-sh/          kernel source, cloned on demand
 │   ├── kernel-modules/    installed modules + firmware
 │   ├── ext-modules/       cmem, qos, gles sources
 │   ├── arm-trusted-firmware/
+│   ├── u-boot/            U-Boot source (owned and reset by build_uboot.sh)
+│   ├── u-boot-build/      U-Boot build dir (O=)
+│   ├── u-boot-release/    flash.bin, u-boot.bin, u-boot-initial-env, ...
 │   ├── initramfs/         busybox tree + uInitramfs.cpio.gz
 │   ├── fitimage/          FIT inputs + fitImage
 │   └── downloads/         checksum-verified download cache
 └── .claude/skills/        per-task deep docs (plain markdown, any agent can read)
 ```
 
-`workspace/` and `linux-sh/` are gitignored, so `git status` says nothing about
+`workspace/` is gitignored, so `git status` says nothing about
 build state. `./scripts/rcar-driver.sh info` is the view.
 
 ## config.ini
@@ -144,9 +156,10 @@ KERNEL_MODULES_OUTPUT_DIR=/tmp/mods ./scripts/rcar-driver.sh build kernel module
 ```
 
 Pinned inputs live here too: `CMEM_SRCREV`, `QOS_SRCREV`, `GLES_SHA256`,
-`TFA_SRCREV`, `BUSYBOX_SHA256`, `PCIE_FW_SHA256`, plus
-`FIT_KERNEL_LOADADDR=0x50200000` / `FIT_ATF_LOADADDR=0x46400000` and
-`KERNEL_LOCALVERSION=-arm64-renesas`.
+`TFA_SRCREV`, `UBOOT_SRCREV`, `BUSYBOX_SHA256`, `PCIE_FW_SHA256`, plus
+`FIT_KERNEL_LOADADDR=0x50200000` / `FIT_ATF_LOADADDR=0x46400000`.
+`KERNEL_LOCALVERSION` is commented out: the release comes from the kernel
+branch (`6.18.54-rcarv4h-sh`).
 
 ## Kernel variants
 
@@ -158,7 +171,7 @@ override anything the board configuration set - including
 
 | Variant | Kernel release | What it changes |
 |---|---|---|
-| `preempt-rt` | `<version>-arm64-renesas-rt` | `CONFIG_PREEMPT_RT=y` (fully preemptible real-time) |
+| `preempt-rt` | `<version>-rcarv4h-sh-rt` | `CONFIG_PREEMPT_RT=y` (fully preemptible real-time) |
 
 Give a variant its own `WORKSPACE_DIR`, or it overwrites the stock build's
 fitImage and initramfs:
@@ -174,7 +187,7 @@ WORKSPACE_DIR=$PWD/workspace-preempt-rt ./scripts/rcar-driver.sh verify
 ```
 
 The kernel tree itself is shared, so the two variants take turns in
-`linux-sh/` - switching `KERNEL_VARIANT` regenerates `.config` and recompiles.
+`workspace/linux-sh/` - switching `KERNEL_VARIANT` regenerates `.config` and recompiles.
 Only the outputs under `WORKSPACE_DIR` are kept apart.
 
 **A variant fragment has to pin back what its own dependencies unhide.**
@@ -243,6 +256,7 @@ under `/usr/lib/modules/`, and `depmod` searches `/lib/modules`.
   output the user may still need, even when `verify` flags it as stale.
 - **`ext-modules fetch` is destructive**: it runs `git checkout -f` and
   `git clean -qxfd` in `workspace/ext-modules/<name>/`.
+- **The `uboot` target only builds `flash.bin`.**
 
 ## Deeper documentation
 
