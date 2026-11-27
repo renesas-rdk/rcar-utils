@@ -135,13 +135,15 @@ check_tools() {
 	python3 -c 'import setuptools' 2>/dev/null || missing+=("python3-setuptools")
 	[ -f /usr/include/gnutls/gnutls.h ] || missing+=("libgnutls28-dev")
 	[ -f /usr/include/openssl/ssl.h ] || missing+=("libssl-dev")
+	# The R-Car SPL .scif image is made with srec_cat.
+	command -v srec_cat >/dev/null 2>&1 || missing+=("srecord")
 
 	if [ "${#missing[@]}" -ne 0 ]; then
 		echo "Error: missing build dependencies: ${missing[*]}"
 		echo "       On Ubuntu 24.04 install them with:"
 		echo "         sudo apt install bison flex bc swig python3-dev \\"
 		echo "             python3-pyelftools python3-setuptools libgnutls28-dev \\"
-		echo "             libssl-dev gcc-aarch64-linux-gnu"
+		echo "             libssl-dev srecord gcc-aarch64-linux-gnu"
 		exit 1
 	fi
 }
