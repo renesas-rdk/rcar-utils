@@ -118,6 +118,11 @@ show_help() {
 # so the scripts work straight after a "git clone" with no configuration at
 # all. config.ini is sourced before this file, so any value set there (or
 # exported in the environment while config.ini leaves it empty) still wins.
+# Cross build for the arm64 board. Set here so every build_*.sh works when
+# run on its own, not only through main_build.sh.
+export ARCH=arm64
+export CROSS_COMPILE=aarch64-linux-gnu-
+
 COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RCAR_UTILS_DIR="$(cd "${COMMON_SH_DIR}/.." && pwd)"
 

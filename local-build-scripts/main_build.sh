@@ -3,9 +3,6 @@
 source ./config.ini
 source ./common.sh
 
-export ARCH=arm64
-export CROSS_COMPILE=aarch64-linux-gnu-
-
 # Allow PLATFORM override via positional arg
 if [ -n "${PLAT:-}" ]; then
 	PLATFORM="$PLAT"
