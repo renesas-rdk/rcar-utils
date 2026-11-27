@@ -210,9 +210,9 @@ ready to build:
 
 ```
 <rcar-utils>/
-├── linux-sh/                     kernel source, cloned on demand
 ├── local-build-scripts/
 └── workspace/
+    ├── linux-sh/                 kernel source, cloned on demand
     ├── kernel-modules/           installed modules, their .conf files and firmware
     ├── ext-modules/              cmem, qos and gles sources
     ├── arm-trusted-firmware/     TF-A source and release/bl31-sparrow-hawk.bin
@@ -224,13 +224,13 @@ ready to build:
     └── downloads/                checksum-verified download cache
 ```
 
-`linux-sh/` and `workspace/` are in `.gitignore`.
+`workspace/` is in `.gitignore`.
 
-When `linux-sh/` is missing, the build prints the repository and branch it is
+When `workspace/linux-sh/` is missing, the build prints the repository and branch it is
 about to use and asks before cloning:
 
 ```
-No kernel source found at <rcar-utils>/linux-sh.
+No kernel source found at <rcar-utils>/workspace/linux-sh.
   repository: https://github.com/renesas-rdk/linux-sh.git
   branch:     ubuntu/rcar-v4h-sh
 Clone it now? [y/N]
@@ -238,7 +238,7 @@ Clone it now? [y/N]
 
 #### Switching an existing linux-sh
 
-An existing `linux-sh/` is used as it is, whatever branch it has checked out.
+An existing `workspace/linux-sh/` is used as it is, whatever branch it has checked out.
 When that is not `KERNEL_BRANCH` the kernel build prints a warning (an older
 branch builds an older kernel with the same `-rcarv4h-sh` suffix). A clone
 made with `--single-branch` only knows its own branch, so add the new one
@@ -267,7 +267,7 @@ sourced by the scripts, so even an empty assignment would overwrite the
 environment. While a line stays commented out, the same variable can be set for
 a single run: `KERNEL_MODULES_OUTPUT_DIR=/tmp/mods ./main_build.sh kernel modules-install`.
 
-- **KERNEL_DIR**: Kernel source tree. Defaults to `<rcar-utils>/linux-sh`.
+- **KERNEL_DIR**: Kernel source tree. Defaults to `<rcar-utils>/workspace/linux-sh`.
 - **KERNEL_URL** / **KERNEL_BRANCH**: Repository and branch used when the kernel source has to be cloned.
 - **WORKSPACE_DIR**: Parent of every output directory. Defaults to `<rcar-utils>/workspace`. Set it to move all of them at once.
 - **KERNEL_MODULES_OUTPUT_DIR**, **EXT_MODULES_SRC_DIR**, **TFA_SRC_DIR**, **INITRAMFS_SRC_DIR**, **FIT_OUTPUT_DIR**, **DOWNLOAD_DIR**: One output directory each, all under `WORKSPACE_DIR` by default.

@@ -47,7 +47,7 @@ The list in `local-build-scripts/README.md` omits `device-tree-compiler`.
 
 ### 2. Kernel source
 
-`linux-sh/` is gitignored and cloned on demand — but the build only offers to
+`workspace/linux-sh/` is gitignored and cloned on demand — but the build only offers to
 clone **when stdin is a TTY**. Non-interactively it prints the command and
 exits 1 (`common.sh` checks `[ ! -t 0 ]`). Pre-clone it once:
 
@@ -57,7 +57,7 @@ git clone --single-branch --branch "$BRANCH" \
     https://github.com/renesas-rdk/linux-sh.git linux-sh
 ```
 
-An existing `linux-sh/` on another branch is still used (the kernel build and
+An existing `workspace/linux-sh/` on another branch is still used (the kernel build and
 `preflight` only warn). Switch it as in "Switching an existing linux-sh" in
 `local-build-scripts/README.md`.
 
@@ -92,11 +92,11 @@ workspace. Warm rebuild time depends mostly on the external modules.
 
 | Symptom | Fix |
 |---|---|
-| `Error: not running interactively, so the source cannot be cloned here` | Pre-clone `linux-sh/` (step 2) |
+| `Error: not running interactively, so the source cannot be cloned here` | Pre-clone `workspace/linux-sh/` (step 2) |
 | `preflight` says `depmod not found` | `sudo apt-get install -y kmod`; check `/usr/sbin` is on `PATH` |
 | `preflight` says `fdtoverlay not found` | `sudo apt-get install -y device-tree-compiler` |
 | `Error: 'mkimage' not found` | `sudo apt-get install -y u-boot-tools` |
-| `<dir> exists but is not a kernel source tree` | `linux-sh/` is non-empty but has no `Makefile` + `arch/arm64`; remove or point `KERNEL_DIR` elsewhere |
+| `<dir> exists but is not a kernel source tree` | `workspace/linux-sh/` is non-empty but has no `Makefile` + `arch/arm64`; remove or point `KERNEL_DIR` elsewhere |
 
 ## Next
 

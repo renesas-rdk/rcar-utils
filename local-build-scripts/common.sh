@@ -86,7 +86,7 @@ For example:
         \$ ./main_build.sh fitimage all
 
 Note: No configuration is needed to build. The kernel source is expected in
-      <rcar-utils>/linux-sh - when it is missing, the build offers to clone it -
+      <rcar-utils>/workspace/linux-sh - when it is missing, the build offers to clone it -
       and every output is written under <rcar-utils>/workspace/:
 
         workspace/kernel-modules  installed kernel modules and their firmware
@@ -122,7 +122,7 @@ COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RCAR_UTILS_DIR="$(cd "${COMMON_SH_DIR}/.." && pwd)"
 
 # Kernel source tree. Cloned on demand by ensure_kernel_dir().
-KERNEL_DIR="${KERNEL_DIR:-${RCAR_UTILS_DIR}/linux-sh}"
+KERNEL_DIR="${KERNEL_DIR:-${RCAR_UTILS_DIR}/workspace/linux-sh}"
 KERNEL_URL="${KERNEL_URL:-https://github.com/renesas-rdk/linux-sh.git}"
 KERNEL_BRANCH="${KERNEL_BRANCH:-ubuntu/rcar-v4h-sh-v6.18.54-2026-09-28}"
 

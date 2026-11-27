@@ -33,9 +33,9 @@ Deep detail: [references/overlay-registration.md](references/overlay-registratio
 
 | What | Path |
 |---|---|
-| Base DTS | `linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk.dts` |
-| Overlay sources | `linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-*.dtso` |
-| Build registration | `linux-sh/arch/arm64/boot/dts/renesas/Makefile` (~line 97+) |
+| Base DTS | `workspace/linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk.dts` |
+| Overlay sources | `workspace/linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-*.dtso` |
+| Build registration | `workspace/linux-sh/arch/arm64/boot/dts/renesas/Makefile` (~line 97+) |
 | FIT registration | `local-build-scripts/build_fitimage.sh` (`FIT_OVERLAY_IMAGES`, `FIT_OVERLAY_CONFIGS`) |
 | Boot selection | `local-build-scripts/fit/rcar-v4h-sh/boot.cmd` → `rcar-customize-boot` |
 
@@ -58,7 +58,7 @@ configuration, and it fails only on the board.
 ## Procedure: edit an existing overlay
 
 ```bash
-$EDITOR linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-fan-pwm.dtso
+$EDITOR workspace/linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-fan-pwm.dtso
 ./scripts/rcar-driver.sh build kernel dtbs
 ./scripts/rcar-driver.sh build fitimage image
 ./scripts/rcar-driver.sh verify
@@ -74,7 +74,7 @@ Full worked example in
 Summary, for an overlay named `<feature>`:
 
 **1.** Create
-`linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-<feature>.dtso`,
+`workspace/linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-<feature>.dtso`,
 starting from the simplest existing one (`fan-pwm.dtso`). It must open with:
 
 ```dts
@@ -82,7 +82,7 @@ starting from the simplest existing one (`fan-pwm.dtso`). It must open with:
 /plugin/;
 ```
 
-**2.** Register in `linux-sh/arch/arm64/boot/dts/renesas/Makefile`, next to the
+**2.** Register in `workspace/linux-sh/arch/arm64/boot/dts/renesas/Makefile`, next to the
 other Sparrow Hawk entries — **three** lines:
 
 ```make

@@ -8,14 +8,14 @@ fires, then reverted.
 
 | # | File | Registers |
 |---|---|---|
-| 1 | `linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-<f>.dtso` | the source |
-| 2 | `linux-sh/arch/arm64/boot/dts/renesas/Makefile` | how to compile it |
+| 1 | `workspace/linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-<f>.dtso` | the source |
+| 2 | `workspace/linux-sh/arch/arm64/boot/dts/renesas/Makefile` | how to compile it |
 | 3 | `local-build-scripts/build_fitimage.sh` → `FIT_OVERLAY_IMAGES` | the FIT image node |
 | 4 | `local-build-scripts/build_fitimage.sh` → `FIT_OVERLAY_CONFIGS` | the selectable config |
 
 ## 1. The source
 
-`linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-smoketest.dtso`:
+`workspace/linux-sh/arch/arm64/boot/dts/renesas/r8a779g3-sparrow-hawk-smoketest.dtso`:
 
 ```dts
 // SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
@@ -39,7 +39,7 @@ and its header comment documents the sysfs surface, which is the house style.
 ## 2. Kernel Makefile
 
 Three lines, added beside the other Sparrow Hawk entries (~line 97+ of
-`linux-sh/arch/arm64/boot/dts/renesas/Makefile`):
+`workspace/linux-sh/arch/arm64/boot/dts/renesas/Makefile`):
 
 ```make
 dtb-$(CONFIG_ARCH_R8A779G0) += r8a779g3-sparrow-hawk-smoketest.dtbo
@@ -152,7 +152,7 @@ mkimage -l workspace/fitimage/fitImage | grep -c smoketest   # expect 0
 ```
 
 Stale `.dtbo`/`.dtb` files are **not** cleaned automatically — delete them from
-`linux-sh/arch/arm64/boot/dts/renesas/`, or the fitimage target may still stage
+`workspace/linux-sh/arch/arm64/boot/dts/renesas/`, or the fitimage target may still stage
 a blob whose source is gone.
 
 Also remove any `#<name>` reference from `boot.cmd`

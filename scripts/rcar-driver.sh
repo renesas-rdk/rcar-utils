@@ -29,7 +29,7 @@ SCRIPTS_DIR="${RCAR_UTILS_DIR}/local-build-scripts"
 
 # Honour the same overrides the build scripts take, so a driver run follows a
 # build that was pointed somewhere else.
-KERNEL_DIR="${KERNEL_DIR:-${RCAR_UTILS_DIR}/linux-sh}"
+KERNEL_DIR="${KERNEL_DIR:-${RCAR_UTILS_DIR}/workspace/linux-sh}"
 WORKSPACE_DIR="${WORKSPACE_DIR:-${RCAR_UTILS_DIR}/workspace}"
 FIT_OUTPUT_DIR="${FIT_OUTPUT_DIR:-${WORKSPACE_DIR}/fitimage}"
 KERNEL_MODULES_OUTPUT_DIR="${KERNEL_MODULES_OUTPUT_DIR:-${WORKSPACE_DIR}/kernel-modules}"

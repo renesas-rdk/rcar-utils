@@ -30,7 +30,7 @@ mtime and size, or `(absent)`:
 
 ```
 Artifacts
-  09:01:54       23976448  linux-sh/arch/arm64/boot/Image
+  09:01:54       23976448  workspace/linux-sh/arch/arm64/boot/Image
   06:57:40       25536651  workspace/fitimage/fitImage
   06:57:39          69344  workspace/fitimage/r8a779g3-sparrow-hawk.dtb
   06:57:39        1201714  workspace/fitimage/uInitramfs.cpio.gz
@@ -47,7 +47,7 @@ All verified. Paths assume the default workspace.
 Kernel release the tree is configured for:
 
 ```bash
-cat linux-sh/include/config/kernel.release
+cat workspace/linux-sh/include/config/kernel.release
 ```
 
 Full fitImage contents — images, load addresses, hashes, configurations:
@@ -93,10 +93,10 @@ grep -E '^(CMEM_SRCREV|QOS_SRCREV|GLES_SHA256|TFA_SRCREV|BUSYBOX_SHA256|PCIE_FW_
 
 ## Gotchas
 
-- **`workspace/` and `linux-sh/` are gitignored**, so `git status` says nothing
+- **`workspace/` is gitignored**, so `git status` says nothing
   about build state. This skill is the only view.
 - **`workspace/fitimage/Image` is a copy**, staged by the fitimage target. It
-  is not the build output — `linux-sh/arch/arm64/boot/Image` is. A mismatch
+  is not the build output — `workspace/linux-sh/arch/arm64/boot/Image` is. A mismatch
   between them is exactly the stale-fitImage case.
 - **mtime is not provenance.** A file can be newer than the source it was built
   from if a target was re-run without changes.

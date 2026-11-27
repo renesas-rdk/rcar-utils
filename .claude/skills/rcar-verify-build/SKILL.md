@@ -50,7 +50,7 @@ WORKSPACE_DIR=$(ls -d "$PWD"/workspace-*/ | head -1) \
     ./scripts/rcar-driver.sh verify
 ```
 
-It compares the fitImage against `linux-sh/arch/arm64/boot/Image`, and the two
+It compares the fitImage against `workspace/linux-sh/arch/arm64/boot/Image`, and the two
 variants take turns in that one tree. So a workspace whose variant is not the
 one currently built reports `fitImage kernel is STALE` **and** `no module tree
 for the built kernel <other-release>`. Those two together mean "wrong variant

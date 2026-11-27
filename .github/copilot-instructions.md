@@ -38,7 +38,7 @@ Both are plain bash and run from any cwd. No arguments prints usage.
 3. **Never hardcode the kernel version.** Read it:
 
    ```bash
-   REL=$(cat linux-sh/include/config/kernel.release)
+   REL=$(cat workspace/linux-sh/include/config/kernel.release)
    ```
 
 ## When suggesting changes
@@ -58,7 +58,7 @@ Both are plain bash and run from any cwd. No arguments prints usage.
   in `/proc/device-tree/chosen/u-boot,bootconf`. See
   `.claude/skills/rcar-verify-hardware/SKILL.md`, and always confirm the
   hardware is plugged in before reading a missing overlay as a fault.
-- `workspace/` and `linux-sh/` are gitignored build output. Do not propose
+- `workspace/` (kernel source and build output) is gitignored. Do not propose
   deleting anything there without asking.
 
 ## Safety

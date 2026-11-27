@@ -92,7 +92,7 @@ rcar-customize-kernel-config (variant fragment, if it needs changing)
 → rcar-verify-build → rcar-deploy-image
 ```
 
-The stock and RT kernels take turns in `linux-sh/`, so build the one you want
+The stock and RT kernels take turns in `workspace/linux-sh/`, so build the one you want
 immediately before deploying it.
 
 `fitimage all` builds and installs kernel and external modules, builds BL31 and
@@ -120,13 +120,12 @@ directory". Use `rcar-driver.sh build <target> <sub>`, which handles the cd.
 ```
 <rcar-utils>/
 ├── AGENTS.md              shared context, every agent reads this
-├── linux-sh/              kernel source, cloned on demand (gitignored)
 ├── local-build-scripts/   build scripts + config.ini
 ├── scripts/               rcar-driver.sh, rcar-deploy.sh
-├── workspace/             all outputs (gitignored)
+├── workspace/             all outputs and linux-sh/ kernel source (gitignored)
 ├── workspace-<variant>/   a KERNEL_VARIANT build's outputs (gitignored)
 └── .claude/skills/        these per-task guides
 ```
 
-`workspace/` and `linux-sh/` are gitignored, so `git status` tells you nothing
+`workspace/` is gitignored, so `git status` tells you nothing
 about build state — `rcar-print-build-info` is the view.

@@ -12,10 +12,9 @@ only.
 ```
 .
 ├── .claude/skills/         AI agent skills (see "AI Agent Skills" below)
-├── linux-sh/               kernel source, cloned on demand (gitignored)
 ├── local-build-scripts/
 ├── scripts/                rcar-driver.sh and helpers
-├── workspace/              everything the build produces (gitignored)
+├── workspace/              kernel source (linux-sh/) and everything the build produces (gitignored)
 ├── LICENSE
 └── README.md
 ```
@@ -36,7 +35,7 @@ configuration and usage details.
 `smoke` builds the complete deployable output—installed kernel and external
 modules, BL31, initramfs, and fitImage—then verifies the artifacts.
 
-No configuration is needed. The kernel source is expected in `linux-sh/` and
+No configuration is needed. The kernel source is expected in `workspace/linux-sh/` and
 the build offers to clone it (single branch) when it is missing; everything
 produced is written under `workspace/`, next to these scripts. Uncomment a path
 in `config.ini` only to build somewhere else.

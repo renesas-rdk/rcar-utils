@@ -94,7 +94,7 @@ on the board.
 |---|---|---|
 | `preempt-rt` | `<version>-rcarv4h-sh-rt` | `CONFIG_PREEMPT_RT=y` — fully preemptible real-time |
 
-**The two variants take turns in `linux-sh/`.** The kernel tree is shared;
+**The two variants take turns in `workspace/linux-sh/`.** The kernel tree is shared;
 only the outputs are separated, and only if you separate them. Give the variant
 its own `WORKSPACE_DIR` or it overwrites the stock fitImage and initramfs.
 The name is free - `.gitignore` globs `/workspace-*/` - so match whatever the
@@ -137,7 +137,7 @@ The build leaves the variant's artifacts in `$WORKSPACE_DIR/fitimage/` and
 A green build is not proof of the preemption model. Check both:
 
 ```bash
-cat linux-sh/include/config/kernel.release
+cat workspace/linux-sh/include/config/kernel.release
 #  → 6.18.54-rcarv4h-sh-rt
 
 strings $WORKSPACE_DIR/fitimage/Image | grep -m1 'Linux version'
@@ -199,7 +199,7 @@ unset KERNEL_VARIANT WORKSPACE_DIR
 Switching or dropping `KERNEL_VARIANT` regenerates `.config` and recompiles.
 
 **Expect `verify` to fail against a workspace whose variant is not the one
-currently in the tree** — it compares `linux-sh/arch/arm64/boot/Image` with the
+currently in the tree** — it compares `workspace/linux-sh/arch/arm64/boot/Image` with the
 fitImage, so after building stock, a `verify` pointed at the RT workspace
 reports `fitImage kernel is STALE` and `no module tree for the built kernel`.
 That is the tree having taken its turn, not a broken artifact. Rebuild the
@@ -221,9 +221,9 @@ letters, digits, `.` and `-` - it becomes `uname -r` and the module directory
 name.
 
 ```bash
-cp linux-sh/.config /tmp/variant.config
+cp workspace/linux-sh/.config /tmp/variant.config
 unset KERNEL_VARIANT && ./scripts/rcar-driver.sh build kernel defconfig
-diff <(sort /tmp/variant.config) <(sort linux-sh/.config)
+diff <(sort /tmp/variant.config) <(sort workspace/linux-sh/.config)
 ```
 
 ## Run: ext-modules
@@ -235,7 +235,7 @@ diff <(sort /tmp/variant.config) <(sort linux-sh/.config)
 ./scripts/rcar-driver.sh build ext-modules clean
 ```
 
-Requires a built kernel — it checks for `linux-sh/Module.symvers` and tells you
+Requires a built kernel — it checks for `workspace/linux-sh/Module.symvers` and tells you
 to run `kernel modules` first. Builds cmem, qos and gles (PowerVR). See
 `rcar-customize-extmodules` to add or patch one.
 
@@ -323,6 +323,6 @@ a top-up.
 | `Error: kernel image not found` from fitimage | `build fitimage all`, or build the kernel first |
 | `Error: BL31 blob not found` | `BL31_BIN` in `config.ini` points at a missing file; fix or unset it |
 | `Error: unknown KERNEL_VARIANT '<x>'` | Typo; the error lists the valid names (fragments in `local-build-scripts/kernel-config/`) |
-| `verify` says STALE *and* `no module tree for the built kernel` | `linux-sh/` holds the other variant; re-run the build for the variant you are checking |
+| `verify` says STALE *and* `no module tree for the built kernel` | `workspace/linux-sh/` holds the other variant; re-run the build for the variant you are checking |
 | Variant build overwrote the stock fitImage | `WORKSPACE_DIR` was not set; it is not optional for a variant |
 | Variant kernel came out as `-rcarv4h-sh` | `KERNEL_VARIANT` not exported for that command — every `build` call needs it |

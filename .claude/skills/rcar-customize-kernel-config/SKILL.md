@@ -40,7 +40,7 @@ build. That is the fragment doing its job, not a problem.
 ## The `.rcar-config.stamp` mechanism
 
 After generating `.config`, the script saves a copy as
-`linux-sh/.rcar-config.stamp`. On the next build it compares:
+`workspace/linux-sh/.rcar-config.stamp`. On the next build it compares:
 
 | State | What happens |
 |---|---|
@@ -92,7 +92,7 @@ diff shows intent.
 ## Procedure: permanent change via the fragment
 
 ```bash
-grep -n 'CONFIG_PCIE_RCAR_GEN4' linux-sh/arch/arm64/configs/sparrow_hawk.config
+grep -n 'CONFIG_PCIE_RCAR_GEN4' workspace/linux-sh/arch/arm64/configs/sparrow_hawk.config
 ```
 
 Edit the fragment, then rebuild — the generated `.config` is refreshed
@@ -113,7 +113,7 @@ initramfs must be rebuilt before the FIT is reassembled.
 Confirm the symbol landed:
 
 ```bash
-grep -E '^CONFIG_PCIE_RCAR_GEN4(_HOST)?=' linux-sh/.config
+grep -E '^CONFIG_PCIE_RCAR_GEN4(_HOST)?=' workspace/linux-sh/.config
 ```
 
 **If you had previously customized `.config`, it is kept and your fragment edit
@@ -173,8 +173,8 @@ that directory ships both. `rcar-driver.sh verify` flags the stale tree.
 ## Verification
 
 ```bash
-grep -E '^CONFIG_<SYMBOL>' linux-sh/.config          # option took effect
-cat linux-sh/include/config/kernel.release           # release string / suffix
+grep -E '^CONFIG_<SYMBOL>' workspace/linux-sh/.config          # option took effect
+cat workspace/linux-sh/include/config/kernel.release           # release string / suffix
 ./scripts/rcar-driver.sh verify            # artifacts still consistent
 ```
 

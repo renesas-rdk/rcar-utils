@@ -50,7 +50,7 @@ build.** Treat a failing verify as a failing build.
 It changes with the source and with `KERNEL_LOCALVERSION`. Always read it:
 
 ```bash
-REL=$(cat linux-sh/include/config/kernel.release)
+REL=$(cat workspace/linux-sh/include/config/kernel.release)
 ```
 
 ## Common tasks
@@ -115,7 +115,7 @@ git clone --single-branch --branch "$BRANCH" \
     https://github.com/renesas-rdk/linux-sh.git linux-sh
 ```
 
-An existing `linux-sh/` on another branch is still used; the kernel build only
+An existing `workspace/linux-sh/` on another branch is still used; the kernel build only
 warns. To switch it, follow "Switching an existing linux-sh" in
 `local-build-scripts/README.md`.
 
@@ -125,10 +125,10 @@ warns. To switch it, follow "Switching an existing linux-sh" in
 
 ```
 <rcar-utils>/
-├── linux-sh/              kernel source, cloned on demand (gitignored)
 ├── local-build-scripts/   build scripts + config.ini
 ├── scripts/               rcar-driver.sh, rcar-deploy.sh  ← agent entry points
 ├── workspace/             every output (gitignored)
+│   ├── linux-sh/          kernel source, cloned on demand
 │   ├── kernel-modules/    installed modules + firmware
 │   ├── ext-modules/       cmem, qos, gles sources
 │   ├── arm-trusted-firmware/
@@ -141,7 +141,7 @@ warns. To switch it, follow "Switching an existing linux-sh" in
 └── .claude/skills/        per-task deep docs (plain markdown, any agent can read)
 ```
 
-`workspace/` and `linux-sh/` are gitignored, so `git status` says nothing about
+`workspace/` is gitignored, so `git status` says nothing about
 build state. `./scripts/rcar-driver.sh info` is the view.
 
 ## config.ini
@@ -187,7 +187,7 @@ WORKSPACE_DIR=$PWD/workspace-preempt-rt ./scripts/rcar-driver.sh verify
 ```
 
 The kernel tree itself is shared, so the two variants take turns in
-`linux-sh/` - switching `KERNEL_VARIANT` regenerates `.config` and recompiles.
+`workspace/linux-sh/` - switching `KERNEL_VARIANT` regenerates `.config` and recompiles.
 Only the outputs under `WORKSPACE_DIR` are kept apart.
 
 **A variant fragment has to pin back what its own dependencies unhide.**
